@@ -1,0 +1,8 @@
+import {createInterface} from 'node:readline/promises';
+import {Writable} from 'node:stream';
+import {randomUUID} from 'node:crypto';
+import {openDatabase,migrate,one} from '../src/db.js';
+import {hashPassword} from '../src/auth.js';
+import {defaultSettings,seedMenu} from '../src/menu.js';
+let muted=false;const output=new Writable({write(chunk,encoding,callback){if(!muted)process.stdout.write(chunk);callback();}});const rl=createInterface({input:process.stdin,output,terminal:process.stdin.isTTY});
+try {const db=await openDatabase();await migrate(db);const email=(process.env.SETUP_EMAIL||await rl.question('Email administrateur : ')).trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))throw new Error('Email invalide');let password=process.env.SETUP_PASSWORD;if(!password){process.stdout.write('Mot de passe (12 caractères minimum, masqué) : ');muted=true;password=await rl.question('');muted=false;process.stdout.write('\n');}if(await one(db,'SELECT id FROM users WHERE email=$1',[email]))throw new Error('Ce compte existe déjà. Aucune modification.');const uid=randomUUID(),rid=randomUUID();await db.transaction(async tx=>{await tx.query('INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)',[uid,email,hashPassword(password)]);await tx.query('INSERT INTO restaurants(id,name,settings) VALUES($1,$2,$3)',[rid,'Chicken World',JSON.stringify(defaultSettings)]);await tx.query("INSERT INTO restaurant_users VALUES($1,$2,'OWNER')",[rid,uid]);await seedMenu(tx,rid);});console.log('Compte créé. Restaurant Chicken World : '+rid+'\nOuvrez le dashboard, puis activez la prise de commande dans Réglages.');await db.close();}finally{rl.close();}

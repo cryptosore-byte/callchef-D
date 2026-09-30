@@ -1,0 +1,2 @@
+import {readdir} from 'node:fs/promises';import {spawnSync} from 'node:child_process';
+async function check(dir){for(const e of await readdir(dir,{withFileTypes:true})){const p=dir+'/'+e.name;if(e.isDirectory())await check(p);else if(p.endsWith('.js')){const r=spawnSync(process.execPath,['--check',p],{stdio:'inherit'});if(r.status)process.exit(r.status);}}}for(const d of ['src','scripts','dist','tests'])await check(d);console.log('Syntaxe validée.');

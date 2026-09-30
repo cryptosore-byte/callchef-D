@@ -1,0 +1,65 @@
+import express from 'express';
+import helmet from 'helmet';
+import {rateLimit} from 'express-rate-limit';
+import {createServer} from 'node:http';
+import {randomUUID} from 'node:crypto';
+import {WebSocketServer} from 'ws';
+import {z} from 'zod';
+import {fileURLToPath} from 'node:url';
+import {openDatabase,migrate,one} from './db.js';
+import {login,authenticate,hashToken} from './auth.js';
+import {RestaurantService} from './service.js';
+import {assert,isOpen} from './domain.js';
+import {defaultSettings,seedMenu} from './menu.js';
+import {schemas} from './tools.js';
+import {settingsSchema,productSchema} from './validation.js';
+import {TwilioProvider} from './providers/twilio.js';
+import {attachBridge} from './bridge.js';
+export function createApp(db,env=process.env){
+ const app=express(),service=new RestaurantService(db),telephony=new TwilioProvider(env);
+ app.disable('x-powered-by');
+ app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'","'unsafe-inline'"],connectSrc:["'self'",'https:','http://localhost:3000'],imgSrc:["'self'",'data:']}}}));
+ app.use((req,res,next)=>{if(req.headers.origin&&req.headers.origin===env.DASHBOARD_ORIGIN){res.setHeader('Access-Control-Allow-Origin',env.DASHBOARD_ORIGIN);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type, X-Restaurant-Id');res.setHeader('Access-Control-Allow-Methods','GET, POST, PATCH, DELETE, OPTIONS');}if(req.method==='OPTIONS')return res.sendStatus(204);next();});
+ app.use(express.json({limit:'128kb'}));app.use(express.urlencoded({extended:false,limit:'32kb'}));
+ app.get('/health',async(req,res)=>{await db.query('SELECT 1');res.json({ok:true,service:'callchef'});});
+ const authLimiter=rateLimit({windowMs:15*60000,limit:20,standardHeaders:true,legacyHeaders:false});
+ app.post('/api/login',authLimiter,async(req,res)=>{const a=z.object({email:z.email(),password:z.string().min(1).max(256)}).parse(req.body);const token=await login(db,a.email,a.password);assert(token,'Email ou mot de passe incorrect',401);res.json({token});});
+ app.use('/api',async(req,res,next)=>{req.token=req.headers.authorization?.replace(/^Bearer /,'');req.user=await authenticate(db,req.token);assert(req.user,'Connexion requise',401);res.setHeader('Cache-Control','no-store');next();});
+ app.get('/api/me',async(req,res)=>res.json({user:req.user,restaurants:(await db.query('SELECT r.*,ru.role FROM restaurants r JOIN restaurant_users ru ON r.id=ru.restaurant_id WHERE ru.user_id=$1 ORDER BY r.created_at',[req.user.id])).rows}));
+ app.post('/api/logout',async(req,res)=>{await db.query('DELETE FROM sessions WHERE token_hash=$1',[hashToken(req.token)]);res.sendStatus(204);});
+ app.post('/api/restaurants',async(req,res)=>{const {name}=z.object({name:z.string().min(2).max(120)}).parse(req.body);const id=randomUUID();await db.transaction(async tx=>{await tx.query('INSERT INTO restaurants(id,name,settings) VALUES($1,$2,$3)',[id,name,JSON.stringify({...defaultSettings,greeting:`Bonjour, vous êtes chez ${name}. Je suis votre assistant IA. Que puis-je vous préparer ?`})]);await tx.query("INSERT INTO restaurant_users VALUES($1,$2,'OWNER')",[id,req.user.id]);await seedMenu(tx,id);});res.status(201).json({id});});
+ app.use('/api',async(req,res,next)=>{const t=req.headers['x-restaurant-id'];assert(typeof t==='string'&&z.string().uuid().safeParse(t).success,'Restaurant requis',400);const membership=await one(db,'SELECT role FROM restaurant_users WHERE restaurant_id=$1 AND user_id=$2',[t,req.user.id]);assert(membership,'Accès interdit',403);req.tenant=t;req.role=membership.role;next();});
+ const owner=(req,res,next)=>{assert(req.role==='OWNER','Accès propriétaire requis',403);next();};
+ app.get('/api/overview',async(req,res)=>{const r=await service.restaurant(req.tenant);const calls=(await db.query("SELECT * FROM calls WHERE restaurant_id=$1 AND (started_at AT TIME ZONE $2)::date=(now() AT TIME ZONE $2)::date",[req.tenant,r.settings.timezone])).rows;const orders=(await db.query("SELECT * FROM orders WHERE restaurant_id=$1 AND (created_at AT TIME ZONE $2)::date=(now() AT TIME ZONE $2)::date ORDER BY created_at DESC",[req.tenant,r.settings.timezone])).rows;const valid=orders.filter(o=>o.status!=='CANCELLED');const callOrders=new Set(valid.filter(o=>o.call_id).map(o=>o.call_id));const sum=valid.reduce((s,o)=>s+o.total_cents,0);res.json({restaurant:r,calls:calls.length,answered:calls.filter(c=>c.answered).length,orders:valid.length,revenueCents:sum,averageCents:valid.length?Math.round(sum/valid.length):0,conversion:calls.length?Math.round(callOrders.size/calls.length*100):0,recentOrders:orders.slice(0,8),minutes:calls.reduce((s,c)=>s+(c.ended_at?(new Date(c.ended_at)-new Date(c.started_at))/60000:0),0),aiCostEur:calls.length&&calls.every(c=>c.ai_cost_eur!==null)?calls.reduce((s,c)=>s+Number(c.ai_cost_eur),0):null});});
+ app.get('/api/orders',async(req,res)=>res.json((await db.query('SELECT * FROM orders WHERE restaurant_id=$1 ORDER BY created_at DESC LIMIT 200',[req.tenant])).rows));
+ app.get('/api/orders/:id',async(req,res)=>{z.uuid().parse(req.params.id);const o=await one(db,'SELECT * FROM orders WHERE restaurant_id=$1 AND id=$2',[req.tenant,req.params.id]);assert(o,'Commande inconnue',404);const call=o.call_id?await one(db,'SELECT * FROM calls WHERE restaurant_id=$1 AND id=$2',[req.tenant,o.call_id]):null;res.json({...o,call});});
+ app.patch('/api/orders/:id',async(req,res)=>{z.uuid().parse(req.params.id);res.json(await service.changeStatus(req.tenant,req.params.id,z.string().parse(req.body.status)));});
+ app.get('/api/calls',async(req,res)=>res.json((await db.query('SELECT * FROM calls WHERE restaurant_id=$1 ORDER BY started_at DESC LIMIT 200',[req.tenant])).rows));
+ app.get('/api/calls/:id',async(req,res)=>{z.uuid().parse(req.params.id);const c=await one(db,'SELECT * FROM calls WHERE restaurant_id=$1 AND id=$2',[req.tenant,req.params.id]);assert(c,'Appel inconnu',404);res.json({...c,events:(await db.query('SELECT type,data,created_at FROM call_events WHERE restaurant_id=$1 AND call_id=$2 ORDER BY id',[req.tenant,c.id])).rows});});
+ app.get('/api/customers',async(req,res)=>res.json((await db.query('SELECT c.*,count(o.id)::int AS orders,coalesce(sum(o.total_cents),0)::int AS total_cents FROM customers c LEFT JOIN orders o ON o.restaurant_id=c.restaurant_id AND o.snapshot->\'customer\'->>\'phone\'=c.phone AND o.status<>\'CANCELLED\' WHERE c.restaurant_id=$1 GROUP BY c.id ORDER BY c.name LIMIT 300',[req.tenant])).rows));
+ app.get('/api/menu',async(req,res)=>res.json(await service.menu(req.tenant)));
+ app.post('/api/menu',owner,async(req,res)=>{const p=productSchema.parse(req.body);const id=p.id||randomUUID();await db.query('INSERT INTO products(id,restaurant_id,category,name,price_cents,available,options,ingredients) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(restaurant_id,id) DO UPDATE SET category=EXCLUDED.category,name=EXCLUDED.name,price_cents=EXCLUDED.price_cents,available=EXCLUDED.available,options=EXCLUDED.options,ingredients=EXCLUDED.ingredients',[id,req.tenant,p.category,p.name,p.price_cents,p.available,JSON.stringify(p.options),p.ingredients]);res.json({id});});
+ app.get('/api/settings',async(req,res)=>res.json({...await service.restaurant(req.tenant),phoneNumbers:(await db.query('SELECT number FROM phone_numbers WHERE restaurant_id=$1',[req.tenant])).rows,connections:{voice:!!env.OPENAI_API_KEY,telephony:!!(env.TWILIO_ACCOUNT_SID&&env.TWILIO_AUTH_TOKEN&&env.STREAM_SECRET),publicUrl:env.PUBLIC_BASE_URL||null}}));
+ app.patch('/api/settings',owner,async(req,res)=>{const a=z.object({name:z.string().min(2).max(120),settings:settingsSchema}).strict().parse(req.body);await db.query('UPDATE restaurants SET name=$1,settings=$2 WHERE id=$3',[a.name,JSON.stringify(a.settings),req.tenant]);res.json({ok:true});});
+ app.post('/api/carts',async(req,res)=>res.status(201).json(await service.createCart(req.tenant)));
+ app.get('/api/carts/:id',async(req,res)=>{z.uuid().parse(req.params.id);res.json(await service.view(req.tenant,req.params.id));});
+ app.post('/api/carts/:id/action',async(req,res)=>{z.uuid().parse(req.params.id);const {action,args}=req.body;assert(['addItemToCart','updateCartItem','removeCartItem','setCustomer'].includes(action),'Action invalide',400);res.json(await service.mutate(req.tenant,req.params.id,action,schemas[action].strict().parse(args)));});
+ app.post('/api/carts/:id/quote',async(req,res)=>{z.uuid().parse(req.params.id);res.json(await service.quote(req.tenant,req.params.id));});
+ app.post('/api/carts/:id/confirm',async(req,res)=>{z.uuid().parse(req.params.id);res.json(await service.confirm(req.tenant,req.params.id,schemas.confirmOrder.parse(req.body),'dashboard'));});
+ app.get('/api/events',async(req,res)=>{res.setHeader('Content-Type','text/event-stream');res.setHeader('Cache-Control','no-cache');res.setHeader('Connection','keep-alive');res.flushHeaders();let last='',busy=false;const timer=setInterval(async()=>{if(busy)return;busy=true;try{if(!await authenticate(db,req.token)){res.end();return;}const rows=(await db.query('SELECT id,status FROM orders WHERE restaurant_id=$1 ORDER BY created_at DESC LIMIT 200',[req.tenant])).rows;const key=JSON.stringify(rows);if(key!==last){last=key;res.write('data: '+JSON.stringify({type:'orders_changed'})+'\n\n');}else res.write(': heartbeat\n\n');}catch{res.end();}finally{busy=false;}},1000);req.on('close',()=>clearInterval(timer));});
+ app.post('/telephony/incoming',async(req,res)=>{
+  assert(telephony.verify(req),'Signature téléphonique invalide',403);const t=await one(db,'SELECT restaurant_id FROM phone_numbers WHERE number=$1',[req.body.To]);res.type('text/xml');if(!t)return res.send(telephony.unavailable('Ce numéro n’est pas encore configuré.'));
+  const r=await service.restaurant(t.restaurant_id);if(!isOpen(r.settings))return res.send(telephony.unavailable('Le restaurant ne prend pas de commandes actuellement. Merci de rappeler pendant les horaires d’ouverture.'));
+  if(!env.OPENAI_API_KEY||!env.STREAM_SECRET)return res.send(telephony.unavailable('Le service vocal est temporairement indisponible.'));
+  const a=z.object({CallSid:z.string().regex(/^CA[0-9a-fA-F]{32}$/),From:z.string().max(50)}).parse(req.body);
+  let call=await one(db,'SELECT * FROM calls WHERE provider_sid=$1',[a.CallSid]);
+  if(!call){call=await one(db,'INSERT INTO calls(id,restaurant_id,provider_sid,caller) VALUES($1,$2,$3,$4) ON CONFLICT(provider_sid) DO UPDATE SET provider_sid=EXCLUDED.provider_sid RETURNING *',[randomUUID(),t.restaurant_id,a.CallSid,a.From]);await service.event(t.restaurant_id,call.id,'call_started');}
+  res.send(telephony.streamTwiml(call.id,telephony.sign(call.id)));
+ });
+ app.post('/telephony/status',async(req,res)=>{assert(telephony.verify(req),'Signature invalide',403);if(['completed','failed','busy','no-answer','canceled'].includes(req.body.CallStatus)){const seconds=Number(req.body.CallDuration);const cost=env.TELEPHONY_EUR_PER_MINUTE&&Number.isFinite(seconds)?Math.ceil(seconds/60)*Number(env.TELEPHONY_EUR_PER_MINUTE):null;await db.query("UPDATE calls SET ended_at=coalesce(ended_at,now()),telephony_cost_eur=$1,outcome=CASE WHEN outcome='IN_PROGRESS' THEN CASE WHEN answered THEN 'NO_ORDER' ELSE 'ABANDONED' END ELSE outcome END WHERE provider_sid=$2",[cost,req.body.CallSid]);}res.sendStatus(204);});
+ app.use(express.static(fileURLToPath(new URL('../dist',import.meta.url))));
+ app.use((err,req,res,next)=>{const status=err.status|| (err.name==='ZodError'?400:500);if(status>=500)console.error(JSON.stringify({level:'error',path:req.path,code:err.code||err.name}));res.status(status).json({error:status>=500?'Erreur serveur. Consultez les journaux.':err.message});});
+ return {app,service,telephony};
+}
+export async function main(){if(process.env.NODE_ENV==='production'){assert(process.env.PUBLIC_BASE_URL?.startsWith('https://'),'PUBLIC_BASE_URL HTTPS requis');assert(process.env.STREAM_SECRET?.length>=32,'STREAM_SECRET de 32 caractères requis');}const db=await openDatabase();await migrate(db);const {app,service,telephony}=createApp(db);const server=createServer(app),wss=new WebSocketServer({noServer:true,maxPayload:65536});server.on('upgrade',(req,socket,head)=>{if(req.url!=='/telephony/media'){socket.destroy();return;}wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));});attachBridge(wss,{db,service,telephony});server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('CallChef prêt sur le port '+(process.env.PORT||3000)));const stop=()=>{wss.clients.forEach(w=>w.close());server.close(async()=>{await db.close();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();};process.on('SIGTERM',stop);process.on('SIGINT',stop);}
+if(process.argv[1]===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e.message);process.exit(1);});
