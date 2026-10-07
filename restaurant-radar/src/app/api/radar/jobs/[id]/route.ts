@@ -14,7 +14,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const { error, ...rest } = job;
   const view: JobView = rest;
   if (job.status === "error") {
-    if (error instanceof ApifyError) { view.error = t("err." + error.code); view.code = error.code; }
+    if (error instanceof ApifyError) {
+      console.warn("radar job: apify", error.message); // e.g. "actor_failed: HTTP 401" (never contains the token)
+      view.error = t("err." + error.code); view.code = error.code;
+    }
     else { console.error("radar job failed", error); view.error = t("home.errFail"); }
   }
   // The full result replaces the partial: do not send both.

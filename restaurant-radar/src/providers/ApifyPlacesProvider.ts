@@ -53,7 +53,11 @@ export class ApifyPlacesProvider implements PlacesProvider {
     } finally { clearTimeout(timer); }
 
     if (res.status === 429) throw new ApifyError("rate_limit");
-    if (!res.ok) throw new ApifyError("actor_failed", `HTTP ${res.status}`);
+    if (!res.ok) {
+      // Apify's error body names the cause (invalid token, no credit, bad input). It never echoes the token.
+      const detail = await res.text().then((b) => b.slice(0, 300)).catch(() => "");
+      throw new ApifyError("actor_failed", `HTTP ${res.status} ${detail}`.trim());
+    }
     const data = await res.json().catch(() => null);
     if (!Array.isArray(data)) throw new ApifyError("actor_failed", "unexpected response shape");
     cacheSet(key, data, CONFIG.limits.scanCacheHours);
