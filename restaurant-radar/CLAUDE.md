@@ -34,7 +34,7 @@ Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify 
 - `src/app/`: `/` landing, `/radar` dashboard, `/report` shareable card, `/api/radar` (sync), `/api/radar/jobs` (POST start) + `/api/radar/jobs/[id]` (GET progress).
 
 ## Env vars (see `.env.example`)
-APIFY_API_TOKEN (enables live data), APIFY_GOOGLE_MAPS_ACTOR_ID (optional), TYPESAFE_API_KEY (enables real Jev), TYPESAFE_API_URL (optional), MAX_NEARBY_RESTAURANTS / MAX_REVIEWS_TARGET / MAX_REVIEWS_PER_COMPETITOR / MAX_COMPETITORS_ANALYZED / SCAN_CACHE_HOURS, OPTIONAL_LLM_API_KEY, DATABASE_URL.
+APIFY_API_TOKEN (enables live data), SITE_PASSWORD (optional basic auth for self-hosting), APIFY_GOOGLE_MAPS_ACTOR_ID (optional), TYPESAFE_API_KEY (enables real Jev), TYPESAFE_API_URL (optional), MAX_NEARBY_RESTAURANTS / MAX_REVIEWS_TARGET / MAX_REVIEWS_PER_COMPETITOR / MAX_COMPETITORS_ANALYZED / SCAN_CACHE_HOURS, OPTIONAL_LLM_API_KEY, DATABASE_URL.
 
 ## TypeSafe / Jev
 Use the `typesafe-ai` skill and read live docs before touching the integration: https://docs.typesafe.ai/llms.txt and https://docs.typesafe.ai/api.md (Install: `claude plugin marketplace add typesafe-ai/skills` then `claude plugin install typesafe@typesafe-ai`.) Console: https://console.typesafe.ai/
@@ -50,5 +50,5 @@ NOT validated: real Jev answers (no key yet). Mock confidences are overconfident
 3. Phase 4: LLM review classification behind `LlmProvider` (structured JSON only, keyword classifier stays as fallback).
 4. Phase 8: Postgres/Supabase (restaurants, scans, competitors, reviews, reviewThemes, marketFeatures, decisions, reports), replace file cache, shareable report links, basic analytics.
 5. Google often returns no price: `priceLevel` defaults to 2. Track "unknown" instead of defaulting.
-6. Deploy (Vercel) and add env vars there. Revoke any token that was ever pasted in chat.
+6. Self-host on a VPS: `sudo bash deploy/setup-vps.sh` (Node 20 + pm2, keys prompted hidden into .env.local, `SITE_PASSWORD` basic auth via `src/middleware.ts`). Vercel needs a shared job store first. Revoke any token that was ever pasted in chat.
 7. Polish: radar sweep animation clipping, mobile check of Battle Mode, a11y pass.
