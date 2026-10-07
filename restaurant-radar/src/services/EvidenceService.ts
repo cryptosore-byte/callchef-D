@@ -73,9 +73,17 @@ const closeLabel = (r: Restaurant) => {
 export const benchmarkCandidates = (competitors: Competitor[]) =>
   competitors.filter((c) => c.benchmarkLevel !== "WEAK").sort((a, b) => b.benchmarkQuality - a.benchmarkQuality).slice(0, 3);
 
+export interface ContinuousInput {
+  changes: import("./continuous/MarketChangeService").MarketChange[];
+  active?: import("./continuous/types").Experiment;
+  finished?: import("./continuous/types").Experiment;
+  menu: import("./continuous/MenuIntelligenceService").MenuInsight[];
+}
+
 export interface EvidenceInput {
   target: Restaurant; targetRep: Reputation; competitors: Competitor[]; summaries: Record<string, ReviewSummary>;
   cards: Record<string, CompetitorCard>; roles: CompetitorRoles; digital?: DigitalHealth; nearbyRestaurants: Restaurant[];
+  continuous?: ContinuousInput;
 }
 
 export function buildEvidence(x: EvidenceInput): Evidence[] {
@@ -171,6 +179,34 @@ export function buildEvidence(x: EvidenceInput): Evidence[] {
       if (!words[strong.params.theme as string].test(x.target.description)) add("strengthNotCommunicated", "MEDIUM", ["FOCUS:POSITIONING", "TEST:UPDATE_POSITIONING"], { theme: strong.params.theme },
         `Customers praise ${String(strong.params.theme).toLowerCase()}, but the Google description does not mention it.`);
     }
+  }
+  // Watch candidates: main threat and emerging threat are always worth a look.
+  const top = x.competitors.find((c) => c.restaurant.id === x.roles.topThreatId);
+  if (top && top.threatLevel === "HIGH") add("mainThreat", "MEDIUM", [`WATCH:@${top.restaurant.id}`], { name: top.restaurant.name, m: Math.round(top.distanceM) }, `${top.restaurant.name} is the closest direct substitute (${Math.round(top.distanceM)} m).`);
+  if (emerging) out.find((e) => e.kind === "emergingThreat")!.supports.push(`WATCH:@${emerging.restaurant.id}`);
+  for (const e of out) if (e.kind === "trendWorse") e.supports.push(`WATCH:SIGNAL_${e.params.theme}`);
+
+  // ---- continuous intelligence: what changed, experiments, menu
+  const k = x.continuous;
+  if (k) {
+    for (const c of k.changes) {
+      const supports: string[] = [];
+      if (c.placeId && ["NEW_COMPETITOR", "COMPETITOR_REVIEW_GROWTH", "COMPETITOR_RATING_UP", "OPENING_HOURS_CHANGE"].includes(c.type)) supports.push(`WATCH:@${c.placeId}`);
+      if (["NEW_REVIEW_PROBLEM", "REVIEW_PROBLEM_WORSENING"].includes(c.type)) {
+        supports.push(`WATCH:SIGNAL_${c.params.theme}`);
+        if (c.params.theme === "WAITING_TIME") supports.push("OWN:FIX_WAITING_TIME");
+        if (c.params.theme === "SERVICE") supports.push("OWN:IMPROVE_SERVICE");
+        if (["FRIES", "PACKAGING", "DELIVERY_EXPERIENCE", "TEMPERATURE"].includes(String(c.params.theme))) supports.push("TEST:TEST_NEW_PACKAGING");
+      }
+      add("change", c.importance >= 0.8 ? "HIGH" : "MEDIUM", supports, { type: c.type, ...c.params }, `Change since last scan: ${c.type} ${JSON.stringify(c.params)}.`);
+    }
+    if (k.active) add("experimentActive", "HIGH", ["WEEK:CONTINUE_EXPERIMENT"], { type: k.active.type, end: k.active.endDate.slice(0, 10) },
+      `An experiment is running (${k.active.type}) until ${k.active.endDate.slice(0, 10)}: changing other things now would blur its measurement.`);
+    const f = k.finished;
+    if (f?.result && f.result.before.value !== null && f.result.after.value !== null) add("experimentMeasured", "HIGH", ["RESULT:PROMISING", "RESULT:NO_CLEAR_EFFECT", "RESULT:NEGATIVE", "RESULT:INCONCLUSIVE"],
+      { type: f.type, before: f.result.before.value, after: f.result.after.value, metric: f.result.after.metric, sample: f.result.after.sample ?? 0 },
+      `Experiment ${f.type}: ${f.result.after.metric} was ${f.result.before.value} before and ${f.result.after.value} during the test (sample ${f.result.after.sample ?? "n/a"}).`);
+    for (const m of k.menu) add("menu", "MEDIUM", m.supports, { code: m.code, ...m.params }, `Menu: ${m.code} ${JSON.stringify(m.params)}.`);
   }
   return out;
 }

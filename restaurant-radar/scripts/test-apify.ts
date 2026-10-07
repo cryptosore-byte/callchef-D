@@ -70,10 +70,18 @@ const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if 
   ok(r.decisions.available && !!r.decisions.bestTest && !!r.decisions.owner, `decisions produced (${r.decisions.bestTest?.choice}, ${r.decisions.bestTest?.tier})`);
   ok(r.sources[0].provider === "apify:google-maps", "source attribution present");
   ok(r.warnings.some((w) => w.includes("Jev")), "warns that Jev is not configured");
-  ok(calls.length === 3, `3 actor runs (target, nearby, competitor reviews): ${calls.length}`);
+  const strong = r.competitors.filter((c) => c.benchmarkLevel !== "WEAK").length;
+  const secondary = r.competitors.length - Math.min(3, strong);
+  const expectedRuns = 2 + (strong ? 1 : 0) + (secondary ? 1 : 0); // an empty tier makes no call
+  ok(calls.length === expectedRuns, `${calls.length} actor runs (target, nearby, review tiers with places only)`);
+  const revRuns = calls.filter((c) => c.startUrls);
+  ok(revRuns.every((c) => c.maxReviews === 50 ? c.startUrls.length <= 3 : c.maxReviews === 20), `review depth focused: ${revRuns.map((c) => `${c.startUrls.length} places x ${c.maxReviews}`).join(", ")}`);
+  ok(r.cost?.mode === "DEEP_SCAN" && r.cost.providerRequests === expectedRuns && r.cost.estimatedUsd > 0, `cost tracked (${r.cost?.providerRequests} requests, ~$${r.cost?.estimatedUsd})`);
   ok(calls.find((c) => c.customGeolocation)?.maxReviews === 0, "nearby run requests no reviews (cost control)");
   const before = calls.length; await runRadar({ name: "Burger Bastide", address: "Marseille", radiusM: 1000 }, "en");
   ok(calls.length === before, "second identical run served from cache (0 new actor runs)");
+  const again = await runRadar({ name: "Burger Bastide", address: "Marseille", radiusM: 1000 }, "fr");
+  ok(again.cost!.cacheHits >= expectedRuns && again.cost!.providerRequests === 0 && again.cost!.jevCached > 0, `re-run: ${again.cost!.cacheHits} cache hits, 0 provider calls, ${again.cost!.jevCached} decisions reused`);
 
   // failure states
   const expect = async (label: string, code: string, fn: () => Promise<unknown>) => {

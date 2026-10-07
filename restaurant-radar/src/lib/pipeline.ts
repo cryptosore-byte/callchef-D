@@ -2,7 +2,7 @@ import { CONFIG } from "@/config";
 import type { DecisionProvider } from "@/providers/DecisionProvider";
 import { MockDecisionProvider } from "@/providers/DecisionProvider";
 import { JevError, TypeSafeDecisionProvider } from "@/providers/TypeSafeDecisionProvider";
-import { ApifyError, ApifyPlacesProvider, DemoPlacesProvider, type PlacesProvider } from "@/providers/ApifyPlacesProvider";
+import { ApifyError, ApifyPlacesProvider, BudgetSkipError, DemoPlacesProvider, type PlacesProvider } from "@/providers/ApifyPlacesProvider";
 import type { Competitor, CompetitorCandidate, RadarInput, RadarResult, Restaurant, ReviewSummary } from "@/types";
 import { makeT, type Locale } from "@/i18n";
 import { competitorKeywords } from "@/providers/apify/normalize";
@@ -17,6 +17,13 @@ import { runBusinessDecisions } from "@/services/BusinessDecisionService";
 import { buildPlanV3 } from "@/services/PlanService";
 import { searchQueries, withFoodProfile } from "@/services/FoodTypeDetectionService";
 import { runDigitalHealth, sourcesFor, type DigitalSources } from "@/services/DigitalHealthRunner";
+import { ProviderBudget } from "@/services/ProviderBudgetService";
+import type { ContinuousInput } from "@/services/EvidenceService";
+import { menuInsights, type Menu } from "@/services/continuous/MenuIntelligenceService";
+import { scenarios } from "@/services/continuous/ScenarioService";
+import { expectationGap, findAdvantage } from "@/services/continuous/AdvantageService";
+import { buildSummaryState } from "@/services/continuous/SummaryState";
+import { CachedDecisionProvider } from "@/providers/CachedDecisionProvider";
 
 export class NotConfiguredError extends Error {}
 
@@ -40,12 +47,30 @@ export interface RadarProgress { stage: Stage; partial: RadarPartial; }
 
 const slim = (r: Restaurant): Restaurant => ({ ...r, reviews: [] });
 
+export interface RunOptions {
+  decider?: DecisionProvider;
+  onProgress?: (p: RadarProgress) => void;
+  digitalSources?: DigitalSources;
+  budget?: ProviderBudget;
+  /** Orchestrator: serve stored + refreshed places instead of a full provider scan. */
+  places?: PlacesProvider;
+  /** Orchestrator hook, called once the analysis is done and before evidence/decisions (snapshots, changes, experiments). */
+  continuous?: (a: AnalysisContext) => { input: ContinuousInput; experimentRule?: { label: string; sufficient: boolean }; menuTarget?: Menu; menuCompetitors?: Menu[] };
+}
+
+export interface AnalysisContext {
+  target: Restaurant; competitors: Competitor[]; nearby: CompetitorCandidate[]; summary?: ReviewSummary;
+  digital?: import("@/services/DigitalHealthRunner").DigitalHealth; budget: ProviderBudget;
+}
+
 /** Single entry point. Demo mode needs no keys. `onProgress` fires when each stage starts, with the data known so far. */
-export async function runRadar(input: RadarInput, locale: Locale = "en", opts: { decider?: DecisionProvider; onProgress?: (p: RadarProgress) => void; digitalSources?: DigitalSources } = {}): Promise<RadarResult> {
+export async function runRadar(input: RadarInput, locale: Locale = "en", opts: RunOptions = {}): Promise<RadarResult> {
   const t = makeT(locale);
   const demo = input.demo || !isLive();
-  const places: PlacesProvider = demo ? new DemoPlacesProvider() : new ApifyPlacesProvider();
-  const decider: DecisionProvider = opts.decider ?? (demo || !TypeSafeDecisionProvider.isConfigured() ? new MockDecisionProvider() : new TypeSafeDecisionProvider());
+  const budget = opts.budget ?? new ProviderBudget("DEEP_SCAN");
+  const places: PlacesProvider = opts.places ?? (demo ? new DemoPlacesProvider() : new ApifyPlacesProvider(undefined, undefined, budget));
+  // Tests inject a raw decider to observe every request; the app always goes through the decision cache.
+  const decider: DecisionProvider = opts.decider ?? new CachedDecisionProvider(demo || !TypeSafeDecisionProvider.isConfigured() ? new MockDecisionProvider() : new TypeSafeDecisionProvider(), budget);
   const warnings: string[] = [];
   if (!demo && decider.engine === "jev-demo") warnings.push(t("warn.noJev"));
   const partial: RadarPartial = { demo };
@@ -78,13 +103,21 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
   partial.competitors = confirmed0.map((c) => ({ restaurant: slim(c.restaurant), distanceM: c.distanceM, competitorProbability: c.competitorProbability, competitorConfidence: c.competitorConfidence, reputation: c.reputation, threatLevel: c.threatLevel, benchmarkLevel: c.benchmarkLevel }));
   emit("reviews");
 
+  // Review depth is focused: the top strong benchmarks get a real sample, other competitors only market context.
   // Reviews only for confirmed competitors (cost control). Failure degrades gracefully.
   let confirmed = confirmed0;
+  const D = CONFIG.reviewDepth;
+  const strongIds = new Set(confirmed0.filter((c) => c.benchmarkLevel !== "WEAK").sort((a, b) => b.benchmarkQuality - a.benchmarkQuality).slice(0, D.strongBenchmarkCount).map((c) => c.restaurant.id));
   try {
-    const enriched = await places.enrichWithReviews(confirmed0.map((c) => c.restaurant), CONFIG.limits.maxReviewsPerCompetitor);
-    confirmed = confirmed0.map((c, i) => ({ ...c, restaurant: enriched[i] }));
+    const tiers = [
+      { rs: confirmed0.filter((c) => strongIds.has(c.restaurant.id)).map((c) => c.restaurant), n: D.strongBenchmark },
+      { rs: confirmed0.filter((c) => !strongIds.has(c.restaurant.id)).map((c) => c.restaurant), n: D.secondaryCompetitor },
+    ];
+    const enriched = new Map<string, Restaurant>();
+    for (const tier of tiers) for (const r of await places.enrichWithReviews(tier.rs, tier.n)) enriched.set(r.id, r);
+    confirmed = confirmed0.map((c) => ({ ...c, restaurant: enriched.get(c.restaurant.id) ?? c.restaurant }));
   } catch (e) {
-    if (!(e instanceof ApifyError)) throw e;
+    if (!(e instanceof ApifyError) && !(e instanceof BudgetSkipError)) throw e;
     warnings.push(t("warn.reviewsFailed"));
   }
 
@@ -105,11 +138,21 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
   const position = radarScore.dimensions.find((d) => d.key === "position")!.score;
   // Battles run alongside the evidence chain (digital sources -> evidence -> Jev decisions).
   const battlesP = Promise.all(competitors.map((c) => runBattle(t, decider, target, summaries[target.id], c, summaries[c.restaurant.id], dataQuality.level)));
-  const digital = await runDigitalHealth(target, targetRep, competitors, position, opts.digitalSources ?? sourcesFor(demo));
-  const evidence = buildEvidence({ target, targetRep, competitors, summaries, cards: competitorCards, roles, digital, nearbyRestaurants: nearbyRaw });
+  const digital = await runDigitalHealth(target, targetRep, competitors, position, opts.digitalSources ?? sourcesFor(demo, budget));
+  const k = opts.continuous?.({ target, competitors, nearby, summary: summaries[target.id], digital, budget });
+  const menu = menuInsights(k?.menuTarget, k?.menuCompetitors ?? []);
+  const evidence = buildEvidence({ target, targetRep, competitors, summaries, cards: competitorCards, roles, digital, nearbyRestaurants: nearbyRaw, continuous: k ? { ...k.input, menu } : undefined });
   const opportunities = findOpportunities(evidence);
   const discovery = discoveryInsight(evidence);
-  const decisions = await runBusinessDecisions(decider, { target, summary: summaries[target.id], competitors, roles, evidence, opportunities, dataQuality: dataQuality.level });
+  const whatIf = scenarios(opportunities);
+  const summaryState = buildSummaryState(target, competitors, market, summaries[target.id], digital, k?.input.active);
+  const decisions = await runBusinessDecisions(decider, {
+    target, summary: summaries[target.id], competitors, roles, evidence, opportunities, dataQuality: dataQuality.level,
+    scenarios: whatIf, experimentRule: k?.experimentRule, summaryState,
+  });
+  const advantage = findAdvantage(target, evidence, digital);
+  const brand = [target.description ?? "", digital?.siteText ?? "", digital?.social.profile?.bio ?? ""].filter(Boolean);
+  const gap = expectationGap(target, summaries[target.id], brand);
   if (!decisions.available) { decisions.unavailableReason = t("decision.unavailable"); warnings.push(decisions.unavailableReason); }
   const plan = buildPlanV3(decisions, evidence, opportunities, competitorCards, roles);
   const battleList = await battlesP;
@@ -122,5 +165,7 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
     radarScore, battles, plan, dataQuality,
     sources: [target.source], generatedAt: new Date().toISOString(), warnings,
     targetReputation: targetRep, competitorCards, roles, digital, evidence, opportunities, discovery,
+    cost: budget.report(),
+    scenarios: whatIf, advantage, expectationGap: gap, menuInsights: menu, summaryState,
   };
 }

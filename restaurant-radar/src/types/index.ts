@@ -104,6 +104,8 @@ export interface Restaurant {
   /** Position of this place in a provider search, when the provider exposes it. */
   searchRanks?: { query: string; rank: number }[];
   foodProfile?: FoodProfile;
+  /** Provider says the place is permanently or temporarily closed. */
+  closed?: boolean;
 }
 
 // ---- Competitors -----------------------------------------------------------
@@ -325,4 +327,13 @@ export interface RadarResult {
   evidence?: import("@/services/EvidenceService").Evidence[];
   opportunities?: import("@/services/EvidenceService").Opportunity[];
   discovery?: import("@/services/EvidenceService").Discovery | null;
+  /** Admin only: provider usage and cache metrics for this run. */
+  cost?: import("@/services/ProviderBudgetService").BudgetReport;
+  // ---- Continuous intelligence ----
+  scenarios?: import("@/services/continuous/ScenarioService").Scenario[];
+  advantage?: import("@/services/continuous/AdvantageService").Advantage | null;
+  expectationGap?: import("@/services/continuous/AdvantageService").ExpectationGap | null;
+  menuInsights?: import("@/services/continuous/MenuIntelligenceService").MenuInsight[];
+  summaryState?: Record<string, unknown>;
+  continuous?: import("@/lib/orchestrator").ContinuousView;
 }

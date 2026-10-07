@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import type { RadarInput, RadarResult } from "@/types";
 import type { Locale } from "@/i18n";
 import { runRadar, type RadarPartial } from "@/lib/pipeline";
+import { runScan, type DeepArea, type RequestedMode } from "@/lib/orchestrator";
 import { STAGES, type Stage } from "@/lib/stages";
 
 export interface Job {
@@ -33,12 +34,15 @@ function sweep() {
   while (jobs.size >= MAX_JOBS) jobs.delete(jobs.keys().next().value as string);
 }
 
-export function startJob(input: RadarInput, locale: Locale, run: typeof runRadar = runRadar): Job {
+type Runner = (input: RadarInput, locale: Locale, o: { onProgress?: Parameters<typeof runRadar>[2] extends infer O ? O extends { onProgress?: infer P } ? P : never : never }) => Promise<RadarResult>;
+
+export function startJob(input: RadarInput, locale: Locale, run: Runner = (i, l, o) => runScan(i, l, o), extra: { mode?: RequestedMode; area?: DeepArea } = {}): Job {
+  const runner: Runner = extra.mode || extra.area ? (i, l, o) => runScan(i, l, { ...o, ...extra }) : run;
   sweep();
   const now = Date.now();
   const job: Job = { id: randomUUID(), status: "running", stage: STAGES[0], stageIndex: 0, stageCount: STAGES.length, partial: { demo: !!input.demo }, startedAt: now, updatedAt: now };
   jobs.set(job.id, job);
-  run(input, locale, {
+  runner(input, locale, {
     onProgress: ({ stage, partial }) => {
       if (job.status !== "running") return;
       Object.assign(job, { stage, stageIndex: STAGES.indexOf(stage), partial, updatedAt: Date.now() });

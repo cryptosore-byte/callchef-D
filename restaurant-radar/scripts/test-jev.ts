@@ -2,6 +2,7 @@
 // It does NOT validate Jev's actual answers: that needs a real key.
 import { runRadar } from "../src/lib/pipeline";
 import { TypeSafeDecisionProvider, JevError } from "../src/providers/TypeSafeDecisionProvider";
+import { NONE } from "../src/services/BusinessDecisionService";
 
 let reqs: any[] = []; let mode: "ok" | "429once" | "401" | "down" = "ok"; let hits429 = 0;
 const realFetch = globalThis.fetch;
@@ -38,9 +39,10 @@ const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if 
   const cq: any = choice?.body.questions.FOCUS_10H;
   ok(cq?.criteria && Object.keys(cq.criteria).length >= 2 && typeof Object.values(cq.criteria)[0] === "string", "choice questions carry per-option criteria");
   ok(choice.body.state.target.themes.length > 0 && choice.body.state.competitors.length > 0, "state includes review themes and competitors (facts, not opinions)");
-  ok(["FOCUS_10H", "BEST_TEST", "DONT_TOUCH", "OWNER_DO", "OWNER_NOT"].every((k) => choice.body.questions[k]), "V3 business decisions asked together in ONE request");
+  ok(["FOCUS_10H", "BEST_TEST", "DONT_TOUCH", "OWNER_DO", "OWNER_NOT", "THIS_WEEK", "WATCH"].every((k) => choice.body.questions[k]), "V3 + V4 business decisions asked together in ONE request");
+  ok(!!choice.body.state.summary && !JSON.stringify(choice.body.state).includes("\"text\""), "Jev gets a small normalized state, never raw review text");
   ok(Array.isArray(choice.body.state.facts) && choice.body.state.facts.every((f: any) => /^E\d+$/.test(f.id) && f.fact), "state carries numbered facts (evidence ids)");
-  ok(Object.values<any>(choice.body.questions).every((q) => Object.entries<any>(q.criteria).every(([o, c]) => /^NO_/.test(o) || /Supported by facts E\d+/.test(c) || q.criteria[o].includes("in `competitors`"))), "every non-empty option cites the facts that support it");
+  ok(Object.values<any>(choice.body.questions).every((q) => Object.entries<any>(q.criteria).every(([o, c]) => Object.values(NONE).includes(o) || /Supported by facts E\d+/.test(c) || q.criteria[o].includes("in `competitors`"))), "every non-empty option cites the facts that support it");
   ok(!JSON.stringify(reqs).includes("mockScores") && !JSON.stringify(reqs).includes("mockProbability"), "mock-only fields never sent to Jev");
   ok(r.decisions.bestTest?.confidence !== undefined && (r.decisions.bestTest?.distribution.length ?? 0) > 1, "probabilities + confidence parsed");
   ok((r.decisions.bestTest?.supportingEvidenceIds.length ?? 0) > 0 && r.decisions.bestTest!.supportingEvidenceIds.every((id) => r.evidence!.some((e) => e.id === id)), "decision cites existing evidence ids only");

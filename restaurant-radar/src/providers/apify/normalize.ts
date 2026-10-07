@@ -172,6 +172,7 @@ export function normalizePlace(raw: Raw, retrievedAt: string, maxReviews = 0): R
     source: { provider: "apify:google-maps", retrievedAt, url: str(raw.url), attribution: "Google Maps (via Apify)" },
     reviews,
     priceKnown: hasPrice(raw),
+    closed: raw.permanentlyClosed === true || raw.temporarilyClosed === true || undefined,
     description: str(raw.description),
     attributes: attributesFrom(raw.additionalInfo),
     phone: str(raw.phone) ?? str(raw.phoneUnformatted),

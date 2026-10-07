@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { runRadar, isLive, ApifyError } from "@/lib/pipeline";
+import { isLive, ApifyError } from "@/lib/pipeline";
+import { runScan } from "@/lib/orchestrator";
 import { makeT, type Locale } from "@/i18n";
 import { parseRadarBody } from "@/lib/radarInput";
 
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   try {
     const parsed = parseRadarBody(await req.json());
     locale = parsed.locale;
-    return NextResponse.json(await runRadar(parsed.input, locale));
+    return NextResponse.json(await runScan(parsed.input, locale, { mode: parsed.mode, area: parsed.area }));
   } catch (e) {
     const t = makeT(locale);
     if (e instanceof ApifyError) return NextResponse.json({ error: t("err." + e.code), code: e.code }, { status: STATUS[e.code] });

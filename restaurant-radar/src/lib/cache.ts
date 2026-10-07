@@ -1,13 +1,15 @@
-// TTL cache for paid Apify calls. Memory + a JSON file so restarts don't re-bill.
-// Phase 8 replaces this with the database-backed scan cache.
+// TTL cache for paid calls (Apify, Jev, website audits). Memory + a persistent JSON file under DATA_DIR,
+// so restarts never re-bill. Every lookup is counted for the admin cost panel.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
 import { join } from "path";
+import { DATA_DIR } from "./store";
 
-type Entry = { exp: number; value: unknown };
-const dir = process.env.CACHE_DIR ?? join(tmpdir(), "restaurant-radar");
-const file = join(dir, "apify-cache.json");
+type Entry = { exp: number; value: unknown; at: number };
+const dir = process.env.CACHE_DIR ?? join(DATA_DIR, "cache");
+const file = join(dir, "provider-cache.json");
 let store: Map<string, Entry> | null = null;
+
+export const cacheStats = { hits: 0, misses: 0 };
 
 function load(): Map<string, Entry> {
   if (store) return store;
@@ -21,12 +23,21 @@ function persist() {
 
 export function cacheGet<T>(key: string): T | undefined {
   const hit = load().get(key);
-  if (!hit) return undefined;
-  if (hit.exp < Date.now()) { load().delete(key); return undefined; }
+  if (!hit || hit.exp < Date.now()) { if (hit) load().delete(key); cacheStats.misses++; return undefined; }
+  cacheStats.hits++;
   return hit.value as T;
 }
 export function cacheSet(key: string, value: unknown, ttlHours: number) {
-  load().set(key, { exp: Date.now() + ttlHours * 3600_000, value });
+  load().set(key, { exp: Date.now() + ttlHours * 3600_000, value, at: Date.now() });
   persist();
 }
 export function cacheClear() { load().clear(); persist(); }
+
+/** Return the cached value or compute, store and return it. */
+export async function memo<T>(key: string, ttlHours: number, fn: () => Promise<T>): Promise<T> {
+  const hit = cacheGet<T>(key);
+  if (hit !== undefined) return hit;
+  const v = await fn();
+  cacheSet(key, v, ttlHours);
+  return v;
+}

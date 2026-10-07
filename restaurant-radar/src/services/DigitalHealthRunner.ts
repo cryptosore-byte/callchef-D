@@ -11,6 +11,8 @@ import { demoDigital } from "@/data/demo";
 import { aiSection, reputationSection, socialSection, visibilitySection, type ReputationSection, type Section, type SocialSection, type VisibilitySection } from "./DigitalHealthService";
 import { cuisineRegex, searchQueries } from "./FoodTypeDetectionService";
 import { CONFIG } from "@/config";
+import { cacheGet, cacheSet } from "@/lib/cache";
+import type { ProviderBudget } from "./ProviderBudgetService";
 
 /** Results requested per Google Maps search in the nearby scan (see apify/inputs.ts). */
 const searchTopN = () => Math.max(5, Math.ceil(CONFIG.limits.maxNearbyRestaurants / 2));
@@ -24,11 +26,28 @@ export interface DigitalHealth {
   /** Secondary overview. score null = not measurable with the connected sources. */
   overview: { key: HealthKey; score: number | null; dataConfidence: Level3 }[];
   queries: string[];
+  /** Lowercased visible text of the restaurant's own site, when it could be read (for advantage / expectation checks). */
+  siteText?: string;
 }
 
 export interface DigitalSources { reputation: ReputationProvider[]; website: WebsiteAuditProvider; instagram: InstagramDataProvider; }
 
-export function sourcesFor(demo: boolean): DigitalSources {
+/** Website audits are free but slow: cached 7 days and counted as an optional (priority 6) check. */
+class CachedWebsiteAudit implements WebsiteAuditProvider {
+  constructor(private inner: WebsiteAuditProvider, private budget?: ProviderBudget) {}
+  async audit(url?: string) {
+    if (!url) return this.inner.audit(url);
+    const key = `site:${url}`;
+    const hit = cacheGet<Awaited<ReturnType<WebsiteAuditProvider["audit"]>>>(key);
+    if (hit) { this.budget?.cached("website.audit", 6); return hit; }
+    if (this.budget && !this.budget.allow("website.audit", 6, 0)) return { status: "NOT_CONNECTED" as const, schemaTypes: [], schemaHours: false, schemaAddress: false, textSample: "", hasMenuText: false };
+    const r = await this.inner.audit(url);
+    if (r.status === "CONNECTED") cacheSet(key, r, CONFIG.cacheTtlHours.websiteAudit);
+    return r;
+  }
+}
+
+export function sourcesFor(demo: boolean, budget?: ProviderBudget): DigitalSources {
   if (demo) {
     const d = demoDigital();
     return {
@@ -39,7 +58,7 @@ export function sourcesFor(demo: boolean): DigitalSources {
   }
   return {
     reputation: [new GoogleReputationProvider(), UberEatsReputationProvider(), DeliverooReputationProvider()],
-    website: new HttpWebsiteAuditProvider(),
+    website: new CachedWebsiteAudit(new HttpWebsiteAuditProvider(), budget),
     instagram: new NotConnectedInstagramProvider(),
   };
 }
@@ -65,7 +84,7 @@ export async function runDigitalHealth(
   const ai = aiSection(target, re, dietary, site, igMe.status === "CONNECTED");
   const social = socialSection(igMe, igOthers);
   return {
-    reputation, visibility, ai, social, queries,
+    reputation, visibility, ai, social, queries, siteText: site.status === "CONNECTED" ? site.textSample : undefined,
     overview: [
       { key: "marketPosition", score: Math.round(marketPosition), dataConfidence: competitors.length >= 3 ? "HIGH" : competitors.length ? "MEDIUM" : "LOW" },
       { key: "reputation", score: reputation.score, dataConfidence: reputation.dataConfidence },

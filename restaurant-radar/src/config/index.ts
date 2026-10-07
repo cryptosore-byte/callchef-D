@@ -30,6 +30,32 @@ export const CONFIG = {
   benchmarkLevels: { strong: 70, strongMinReviews: 100, strongMinSimilarity: 0.6, medium: 50, mediumMinReviews: 30, mediumMinSimilarity: 0.45 },
   benchmarkVolumeRef: 500, // review count treated as "fully established"
 
+  // ---- Continuous intelligence: scan modes, cost guard, refresh rules ----
+  scanModes: {
+    lightRefreshMinDays: num(process.env.LIGHT_REFRESH_MIN_DAYS, 6),   // below this, serve the stored result (no provider call)
+    monthlyRefreshDays: num(process.env.MONTHLY_REFRESH_DAYS, 30),     // older than this, run a MONTHLY_REFRESH
+    deepScanMaxAgeDays: num(process.env.DEEP_SCAN_MAX_AGE_DAYS, 90),   // older than this, a new DEEP_SCAN
+  },
+  reviewDepth: {
+    target: num(process.env.MAX_REVIEWS_TARGET, 200),
+    strongBenchmark: num(process.env.REVIEWS_STRONG_BENCHMARK, 50),   // top 2-3 benchmarks only
+    secondaryCompetitor: num(process.env.REVIEWS_SECONDARY, 20),
+    strongBenchmarkCount: 3,
+    lightTargetNew: 20,           // LIGHT_REFRESH: latest reviews of the target
+    lightCompetitorNew: 10,       // only when a competitor's review count moved materially
+    materialReviewDelta: 10,      // "materially changed" = +10 reviews or +5%
+    materialReviewPct: 0.05,
+  },
+  budget: {
+    maxDeepScanUsd: num(process.env.MAX_DEEP_SCAN_BUDGET, 1.0),
+    maxLightRefreshUsd: num(process.env.MAX_LIGHT_REFRESH_BUDGET, 0.15),
+    maxMonthlyRefreshUsd: num(process.env.MAX_MONTHLY_REFRESH_BUDGET, 0.5),
+    // Configurable unit estimates (USD). Check your provider's current pricing; these are ceilings, not invoices.
+    unit: { apifyRun: num(process.env.COST_APIFY_RUN, 0.005), apifyPlace: num(process.env.COST_APIFY_PLACE, 0.004), apifyReview: num(process.env.COST_APIFY_REVIEW, 0.0006), jevRequest: num(process.env.COST_JEV_REQUEST, 0) },
+    reviewSpikeThreshold: 400,
+  },
+  cacheTtlHours: { decisions: 24 * 30, websiteAudit: 24 * 7, competitorConfirm: 24 * 30 },
+
   // Social Power Score weights (sum = 1). Follower count is deliberately a minor input.
   socialWeights: { engagement: 0.3, consistency: 0.2, audience: 0.15, freshness: 0.15, profile: 0.1, performance: 0.1 },
   prefilterTopN: 8, // candidates sent to Jev for the yes/no decision
