@@ -5,7 +5,7 @@ import { km } from "@/lib/labels";
 import { reasonText, stars } from "@/lib/reasons";
 import { useT, useLocale } from "@/i18n/client";
 import { pct } from "@/lib/util";
-import { Plan } from "./Plan";
+import { PlanV3 } from "./V3";
 import { TierBadge } from "./ui";
 
 const VERDICT_CLS: Record<BattleVerdict, string> = {
@@ -69,7 +69,7 @@ function BattleMode({ r, c, onClose }: { r: RadarResult; c: Competitor; onClose:
         </div>
 
         <h4 className="mt-6 font-display text-lg font-bold">{t("battle.yourPlan")}</h4>
-        <div className="mt-2"><Plan plan={r.plan} compact /></div>
+        <div className="mt-2"><PlanV3 r={r} compact /></div>
       </div>
     </div>
   );

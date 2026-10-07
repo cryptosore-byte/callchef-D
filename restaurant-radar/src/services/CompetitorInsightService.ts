@@ -2,8 +2,7 @@
 // Every line is a structured Reason computed from observed data (localized in the UI). No data = no line.
 import type { Competitor, Reason, Reputation, Restaurant, ReviewSummary, Theme } from "@/types";
 import { interval } from "@/lib/util";
-import { smoothedPositive } from "./ReviewIntelligenceService";
-import { FOOD_THEMES } from "./JevDecisionService";
+import { FOOD_THEMES, smoothedPositive } from "./ReviewIntelligenceService";
 
 export type Verdict = "emergingThreat" | "keyBenchmark" | "directRival" | "learnFrom" | "watch" | "minor";
 export type ReputationNote = "highRawLowConfidence" | "strongEstablished" | "established" | "moderate" | "lowConfidence";

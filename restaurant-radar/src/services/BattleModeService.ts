@@ -2,14 +2,12 @@ import { CONFIG } from "@/config";
 import type { DecisionProvider } from "@/providers/DecisionProvider";
 import { tierFor } from "@/providers/DecisionProvider";
 import type {
-  BattleDimension, BattlePlan, BattleResult, BattleVerdict, Competitor, DataQualityLevel, DecisionResult,
-  DecisionSet, Restaurant, ReviewSummary, Theme,
+  BattleDimension, BattleResult, BattleVerdict, Competitor, DataQualityLevel, DecisionResult, Restaurant, ReviewSummary,
 } from "@/types";
-import { clamp, pct } from "@/lib/util";
+import { clamp } from "@/lib/util";
 import type { T } from "@/i18n";
-import { getStat, negativePressure, smoothedPositive } from "./ReviewIntelligenceService";
+import { FOOD_THEMES, smoothedPositive } from "./ReviewIntelligenceService";
 import { convenienceScore, reputationScore, valueScore } from "./RadarScoreService";
-import { FOOD_THEMES, actionScores, type DecisionContext } from "./JevDecisionService";
 import { STATE_NOTE, competitorState, placeState } from "./jevQuestions";
 
 const verdict = (you: number, them: number): BattleVerdict =>
@@ -24,8 +22,10 @@ const overlap = (a: string[], b: string[]) => {
 function dims(t: T, me: Restaurant, meS: ReviewSummary | undefined, c: Restaurant, cS: ReviewSummary | undefined): BattleDimension[] {
   const thin = (cS?.reviewsAnalyzed ?? 0) < CONFIG.dataQuality.mediumMinReviews;
   const lowNote = thin ? " " + t("bn.lowData") : "";
-  const priceMe = 100 - (me.priceLevel - 1) * 25;
-  const priceThem = 100 - (c.priceLevel - 1) * 25;
+  // Unknown price on either side: compare price perception only, never the placeholder level.
+  const pricesKnown = me.priceKnown !== false && c.priceKnown !== false;
+  const priceMe = pricesKnown ? 100 - (me.priceLevel - 1) * 25 : 50;
+  const priceThem = pricesKnown ? 100 - (c.priceLevel - 1) * 25 : 50;
   const pm = smoothedPositive(meS, ["PRICE"]).value * 100;
   const pt = smoothedPositive(cS, ["PRICE"]).value * 100;
   const out: BattleDimension[] = [];
@@ -86,55 +86,3 @@ export async function runBattle(
   return { competitorId: comp.restaurant.id, competitorName: comp.restaurant.name, dimensions: d, verdictCounts: counts, battleground, howToWin };
 }
 
-// ---- 30-day plan: DEFEND / FIX / ATTACK / IGNORE ----------------------------
-export async function buildPlan(
-  provider: DecisionProvider, ctx: DecisionContext, decisions: DecisionSet,
-): Promise<BattlePlan | undefined> {
-  if (!decisions.available || !decisions.nextAction || !decisions.advantage || !decisions.biggestThreat) return undefined;
-  const me = ctx.summaries[ctx.target.id];
-  const threat = ctx.competitors.find((c) => c.restaurant.name === decisions.biggestThreat!.choice)!;
-  const threatS = ctx.summaries[threat.restaurant.id];
-
-  // DEFEND
-  const advTheme: Record<string, Theme[]> = { PRODUCT_QUALITY: FOOD_THEMES, TASTE: ["TASTE"], PORTIONS: ["PORTION"], VALUE: ["VALUE_FOR_MONEY"], SERVICE: ["SERVICE"], PRICE: ["PRICE"] };
-  const th = advTheme[decisions.advantage.choice] ?? [];
-  const stats = th.map((t) => me && getStat(me, t)).filter(Boolean) as NonNullable<ReturnType<typeof getStat>>[];
-  const mentions = stats.reduce((s, x) => s + x.mentions, 0);
-  const pos = stats.reduce((s, x) => s + x.positive, 0);
-  const tr = ctx.t;
-  const defend = decisions.advantage.choice === "NO_CLEAR_ADVANTAGE"
-    ? { title: tr("plan.defend.none"), detail: tr("plan.defend.noneD") }
-    : { title: tr.opt(decisions.advantage.choice), detail: mentions ? tr("plan.defend.d", { p: pct(pos / mentions), n: mentions }) : tr("plan.defend.fallback") };
-
-  // FIX
-  const na = decisions.nextAction;
-  const fix = na.choice === "NO_ACTION" || na.tier === "INSUFFICIENT"
-    ? { title: tr("plan.fix.none"), detail: tr("plan.fix.noneD") }
-    : { title: tr.opt(na.choice), detail: na.conclusion };
-
-  // ATTACK: where does the biggest threat show weakness?
-  const attackOpts: Record<string, Theme[]> = { WAITING_TIME: ["WAITING_TIME"], SERVICE: ["SERVICE"], PRICE: ["PRICE"], VALUE: ["VALUE_FOR_MONEY"], PACKAGING: ["PACKAGING", "DELIVERY_EXPERIENCE"], FOOD: ["FOOD_QUALITY", "TASTE", "BURGER", "CHICKEN"] };
-  const aScores = Object.fromEntries(Object.entries(attackOpts).map(([k, v]) => [k, negativePressure(threatS, v).value]));
-  const aRaw = await provider.choose({ id: "ATTACK_ANGLE", question: "Where is this competitor most exposed?", options: Object.keys(attackOpts), context: { competitor: threat.restaurant.name },
-    state: { note: STATE_NOTE, competitor: competitorState(threat, threatS) },
-    criteria: Object.fromEntries(Object.keys(attackOpts).map((k) => [k, `The competitor shows a high share of negative mentions about ${k.toLowerCase().replace(/_/g, " ")} in \`competitor.themes\`.`])),
-    mockScores: aScores });
-  const aThemes = attackOpts[aRaw.choice];
-  const aStats = aThemes.map((t) => threatS && getStat(threatS, t)).filter(Boolean) as NonNullable<ReturnType<typeof getStat>>[];
-  const aM = aStats.reduce((s, x) => s + x.mentions, 0);
-  const aN = aStats.reduce((s, x) => s + x.negative, 0);
-  const attack = aScores[aRaw.choice] >= 0.2 && aM >= 8
-    ? { title: tr("plan.attack.t", { name: threat.restaurant.name, what: tr.opt(aRaw.choice).toLowerCase() }), detail: tr("plan.attack.d", { p: pct(aN / aM), n: aM, what: tr.opt(aRaw.choice).toLowerCase(), name: threat.restaurant.name }) }
-    : { title: tr("plan.attack.none"), detail: tr("plan.attack.noneD", { name: threat.restaurant.name }) };
-
-  // IGNORE: the least-supported candidate action
-  const cand = ["IMPROVE_PHOTOGRAPHY", "OPTIMIZE_MENU", "TEST_PROMOTION", "ADJUST_PRICING", "IMPROVE_SERVICE"].filter((a) => a !== na.choice);
-  const sc = actionScores(ctx, decisions.whyTheyWin?.choice, true);
-  const iRaw = await provider.choose({ id: "IGNORE", question: "Which improvement should the restaurant NOT spend time on right now?", options: cand, context: {},
-    state: { note: STATE_NOTE, target: placeState(ctx.target, me) },
-    criteria: Object.fromEntries(cand.map((a) => [a, `${a.toLowerCase().replace(/_/g, " ")} is NOT supported by any evidence in \`target\`, so effort spent here is wasted for the next 30 days.`])),
-    mockScores: Object.fromEntries(cand.map((a) => [a, 1 - (sc[a] ?? 0)])) });
-  const ignore = { title: tr.opt(iRaw.choice), detail: tr("plan.ignore.d") };
-
-  return { defend, fix, attack, ignore };
-}

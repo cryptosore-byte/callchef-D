@@ -43,6 +43,8 @@ export interface DecisionProvider {
   binary(req: BinaryRequest): Promise<BinaryResponse>;
   /** Many independent yes/no questions over ONE shared state, in a single request. */
   binaryBatch(state: unknown, reqs: BinaryRequest[]): Promise<Record<string, BinaryResponse>>;
+  /** Many independent choice questions over ONE shared state, in a single request (they cannot see each other's answers). */
+  chooseBatch(state: unknown, reqs: ChoiceRequest[]): Promise<Record<string, ChoiceResponse>>;
 }
 
 /** Deterministic stand-in used in demo mode. Labeled "jev-demo" everywhere in the UI. */
@@ -69,6 +71,12 @@ export class MockDecisionProvider implements DecisionProvider {
   async binary(req: BinaryRequest): Promise<BinaryResponse> {
     const p = req.mockProbability ?? 0.5;
     return { probability: p, confidence: Math.min(0.97, 0.5 + Math.abs(p - 0.5)) };
+  }
+
+  async chooseBatch(_state: unknown, reqs: ChoiceRequest[]) {
+    const out: Record<string, ChoiceResponse> = {};
+    for (const r of reqs) out[r.id] = await this.choose(r);
+    return out;
   }
 
   async binaryBatch(_state: unknown, reqs: BinaryRequest[]) {

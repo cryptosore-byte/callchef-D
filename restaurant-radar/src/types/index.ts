@@ -164,6 +164,8 @@ export interface ThemeStat {
   highSeverity: number;
   signals: { word: string; count: number }[];
   recentTrend: "improving" | "worsening" | "stable" | "unknown";
+  /** Negative mentions per 100 analyzed reviews: last 90 days vs the previous 90 days (null = sample too small). */
+  recency?: { recentPer100: number; previousPer100: number; recentReviews: number; previousReviews: number } | null;
 }
 
 export type RootCauseKey =
@@ -307,10 +309,10 @@ export interface RadarResult {
   competitors: Competitor[];
   summaries: Record<string, ReviewSummary>;
   market: MarketFeatures;
-  decisions: DecisionSet;
+  decisions: import("@/services/BusinessDecisionService").DecisionSetV3;
   radarScore: RadarScore;
   battles: Record<string, BattleResult>;
-  plan?: BattlePlan;
+  plan?: import("@/services/PlanService").PlanV3;
   dataQuality: DataQuality;
   sources: SourceMeta[];
   generatedAt: string;
@@ -320,4 +322,7 @@ export interface RadarResult {
   competitorCards?: Record<string, import("@/services/CompetitorInsightService").CompetitorCard>;
   roles?: import("@/services/CompetitorInsightService").CompetitorRoles;
   digital?: import("@/services/DigitalHealthRunner").DigitalHealth;
+  evidence?: import("@/services/EvidenceService").Evidence[];
+  opportunities?: import("@/services/EvidenceService").Opportunity[];
+  discovery?: import("@/services/EvidenceService").Discovery | null;
 }

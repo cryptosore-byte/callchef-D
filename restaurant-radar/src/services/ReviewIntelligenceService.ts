@@ -61,17 +61,24 @@ export function ensureMentions(reviews: Review[]): Review[] {
   return reviews.map((r) => (r.mentions ? r : { ...r, mentions: keywordClassify(r) }));
 }
 
-function trendFor(reviews: Review[], theme: Theme, nowMs: number): ThemeStat["recentTrend"] {
-  const recent: ThemeMention[] = [];
-  const older: ThemeMention[] = [];
-  for (const r of reviews) {
-    const age = (nowMs - new Date(r.date).getTime()) / 86400000;
-    for (const m of r.mentions ?? []) if (m.theme === theme) (age <= 90 ? recent : older).push(m);
-  }
-  if (recent.length < 6 || older.length < 6) return "unknown";
-  const rate = (xs: ThemeMention[]) => xs.filter((m) => m.sentiment === "negative").length / xs.length;
-  const d = rate(recent) - rate(older);
-  return d > 0.15 ? "worsening" : d < -0.15 ? "improving" : "stable";
+const RECENT_DAYS = 90;
+const MIN_WINDOW_REVIEWS = 15; // reviews needed in EACH window to compare periods
+
+/**
+ * Recency V3: negative mentions per 100 analyzed reviews, last 90 days vs the previous comparable 90 days.
+ * Normalizing by reviews (not by mentions) keeps a busy month from looking worse just because it has more reviews.
+ */
+function recencyFor(reviews: Review[], theme: Theme, nowMs: number): { trend: ThemeStat["recentTrend"]; recency: ThemeStat["recency"] } {
+  const age = (r: Review) => (nowMs - new Date(r.date).getTime()) / 86400000;
+  const recent = reviews.filter((r) => age(r) <= RECENT_DAYS);
+  const previous = reviews.filter((r) => age(r) > RECENT_DAYS && age(r) <= 2 * RECENT_DAYS);
+  if (recent.length < MIN_WINDOW_REVIEWS || previous.length < MIN_WINDOW_REVIEWS) return { trend: "unknown", recency: null };
+  const negCount = (rs: Review[]) => rs.reduce((s, r) => s + (r.mentions ?? []).filter((m) => m.theme === theme && m.sentiment === "negative").length, 0);
+  const na = negCount(recent), nb = negCount(previous);
+  const a = (100 * na) / recent.length, b = (100 * nb) / previous.length;
+  // A change must be relative (x1.5), absolute (+/- 4 per 100 reviews) AND rest on at least 5 negative mentions.
+  const trend = a >= b * 1.5 && a - b >= 4 && na >= 5 ? "worsening" : b >= a * 1.5 && b - a >= 4 && nb >= 5 ? "improving" : "stable";
+  return { trend, recency: { recentPer100: Math.round(a), previousPer100: Math.round(b), recentReviews: recent.length, previousReviews: previous.length } };
 }
 
 export function summarizeReviews(restaurant: Restaurant, t: T, nowMs = Date.now()): ReviewSummary {
@@ -91,7 +98,7 @@ export function summarizeReviews(restaurant: Restaurant, t: T, nowMs = Date.now(
       positiveRate: positive / ms.length, negativeRate: negative / ms.length,
       highSeverity: ms.filter((m) => m.severity === "high").length,
       signals: [...sig.entries()].map(([word, count]) => ({ word, count })).sort((a, b) => b.count - a.count).slice(0, 4),
-      recentTrend: trendFor(reviews, theme, nowMs),
+      ...(({ trend, recency }) => ({ recentTrend: trend, recency }))(recencyFor(reviews, theme, nowMs)),
     };
   }).sort((a, b) => b.mentions - a.mentions);
 
@@ -111,6 +118,7 @@ export function summarizeReviews(restaurant: Restaurant, t: T, nowMs = Date.now(
 }
 
 export const getStat = (s: ReviewSummary, theme: Theme) => s.stats.find((x) => x.theme === theme);
+export const FOOD_THEMES: Theme[] = ["BURGER", "FOOD_QUALITY", "CHICKEN", "PIZZA", "TEXTURE"];
 
 // ---- Root-cause hypotheses (never certainty) --------------------------------
 export function detectRootCauses(s: ReviewSummary, t: T): RootCause[] {

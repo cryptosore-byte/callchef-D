@@ -67,7 +67,7 @@ const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if 
   ok(thinNotes.some((n) => /fewer than/.test(n)), "competitor with <11 reviews is flagged as lower confidence");
   ok(!r.competitors.some((c) => c.restaurant.name === "Pizzeria Luna"), "pizza place gated out by cuisine similarity");
   ok(r.target.reviews.length === 200 && r.dataQuality.level === "HIGH", "target has 200 reviews, HIGH quality");
-  ok(r.decisions.available && !!r.decisions.nextAction, `decisions produced (${r.decisions.nextAction?.choice}, ${Math.round((r.decisions.nextAction?.confidence ?? 0) * 100)}%)`);
+  ok(r.decisions.available && !!r.decisions.bestTest && !!r.decisions.owner, `decisions produced (${r.decisions.bestTest?.choice}, ${r.decisions.bestTest?.tier})`);
   ok(r.sources[0].provider === "apify:google-maps", "source attribution present");
   ok(r.warnings.some((w) => w.includes("Jev")), "warns that Jev is not configured");
   ok(calls.length === 3, `3 actor runs (target, nearby, competitor reviews): ${calls.length}`);
@@ -85,6 +85,6 @@ const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if 
   cacheClear(); mode = "noreviews";
   const nr = await runRadar({ name: "Burger Bastide", address: "x", radiusM: 1000 }, "en");
   ok(nr.dataQuality.level === "LOW" && nr.warnings.some((w) => w.includes("No public reviews")), "no reviews -> LOW quality + warning");
-  ok(nr.decisions.nextAction?.tier !== "STRONG", `no reviews -> no strong recommendation (${nr.decisions.nextAction?.choice}, ${nr.decisions.nextAction?.tier})`);
+  ok(nr.decisions.bestTest?.tier !== "STRONG" && nr.decisions.owner?.action.tier !== "STRONG", `no reviews -> no strong recommendation (${nr.decisions.bestTest?.choice}, ${nr.decisions.bestTest?.tier})`);
   globalThis.fetch = realFetch;
 })();

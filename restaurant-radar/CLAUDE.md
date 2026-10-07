@@ -8,7 +8,9 @@ Public SaaS for restaurant owners. Owner enters name/address/radius -> app finds
 - Confidence policy: >=80% strong, 60-79% worth testing, <60% "not enough evidence" (never force a recommendation).
 - Say "X% of available mentions", never "X% of customers". Always show sample size.
 - Radar Score is computed by code only (formulas in `src/config`, shown in UI).
-- No Deliveroo/Uber Eats scraping. `MarketplaceDataProvider` stays an empty interface.
+- No Deliveroo/Uber Eats/Instagram scraping code. Their providers (`src/providers/DigitalProviders.ts`) return NOT_CONNECTED until an APPROVED source is configured, its output mapping validated, and the user has approved the cost. NO DATA = NO CLAIM: a missing source gives no score and no sentence.
+- Jev only chooses among options backed by numbered evidence (`EvidenceService`); every decision returns `supportingEvidenceIds`. Nothing supported = "no supported action", never a forced answer.
+- Owners see "Preuves solides / Signal à confirmer / Données insuffisantes", not raw percentages (raw values only in `?debug=1`).
 - API keys server-side only. Never write tokens in files, logs or commits.
 - The user is French, wants short answers and wants things BUILT. UI must work in EN and FR.
 
@@ -18,8 +20,9 @@ Next.js 14 (app router) + TypeScript + Tailwind. No DB yet.
     npx tsc --noEmit                           # typecheck
     npx tsx scripts/selftest.ts                # demo pipeline output
     npx tsx scripts/test-apify.ts              # 25 checks, SIMULATED Apify responses
-    npx tsx scripts/test-jev.ts                # 16 checks, SIMULATED TypeSafe responses
+    npx tsx scripts/test-jev.ts                # 20 checks, SIMULATED TypeSafe responses
     npx tsx scripts/test-jobs.ts               # async scan job: stage order, competitors revealed early, errors
+    npx tsx scripts/test-v3.ts                 # V3: food type, Bayesian rating, threat vs benchmark, no-data-no-claim, no raw i18n keys
     npx tsx scripts/checki18n.ts               # every t("key") exists in en + fr, placeholders match
     npx tsx scripts/live-scan.ts "Name" "City" 2000   # REAL scan (costs money; needs APIFY_API_TOKEN)
 Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify to avoid cache bleed.
@@ -27,10 +30,11 @@ Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify 
 ## Layout
 - `src/lib/pipeline.ts` single entry `runRadar(input, locale, {decider?})`. Demo mode (no keys) uses fictional Marseille data + `MockDecisionProvider` (labelled "jev-demo" in UI).
 - `src/providers/`: `ApifyPlacesProvider` (+ `apify/inputs.ts` and `apify/normalize.ts` hold ALL actor-specific shapes; default actor `compass~crawler-google-places`), `TypeSafeDecisionProvider` (real Jev), `DecisionProvider` (interface + mock), `LlmProvider` (noop), `MarketplaceDataProvider` (empty).
-- `src/services/`: competitor prefilter + Jev yes/no, review intelligence (keyword FR/EN classifier + aggregation + root causes), market features, radar score, `JevDecisionService` (decisions A-G), `BattleModeService` (duel + 30-day plan), `jevQuestions.ts` (rubrics + factual state builders).
+- `src/services/` (V3 flow): `FoodTypeDetectionService` (taxonomy + modifiers + confidence + evidence, search queries) -> `CompetitorDetectionService` (relevance V2, threat potential vs benchmark quality, Jev yes/no) + `ReputationService` (Bayesian adjusted rating, m=50, C=local average) -> `CompetitorInsightService` (human cards, roles) -> `ReviewIntelligenceService` (themes, root causes, 90-day vs previous 90-day per 100 reviews) -> `DigitalHealthRunner/Service` (reputation index, visibility, AI discoverability, social) -> `EvidenceService` (numbered evidence, opportunities, discovery insight) -> `BusinessDecisionService` (6 Jev decisions in ONE batched request, speculative fan-out for "what to learn") -> `PlanService` (protect / test / exploit / not a priority). `BattleModeService` = detailed comparison modal. `jevQuestions.ts` = factual state builders. All weights/thresholds in `src/config`.
 - `src/i18n/`: `en.ts`, `fr.ts`, `index.ts` (`makeT`), `client.tsx` (provider + switch). Server-written sentences are localized by passing `t` through services; changing language regenerates the result (re-fetch).
 - `src/lib/cache.ts`: 24h disk+memory cache for paid Apify calls (temp dir, or `CACHE_DIR`).
 - `src/lib/jobs.ts` in-memory scan jobs (TTL 30 min). `runRadar` emits `onProgress` per stage (`src/lib/stages.ts`) with real partial data (target, nearby count, confirmed competitors). Client: `src/lib/scanJob.ts` (start + 1s polling), `ScanProgress` shows competitors first, then the full result.
+- UI: `/radar` answers 6 questions (where you stand, who to watch, what customers think, where weak online, what to test, what not to touch) + discovery insight + "if we owned it". `?debug=1` shows the admin/debug panel. Components: `WarRoom` (competitor cards), `DigitalHealth`, `V3.tsx` (decisions, plan, debug), `ShareCard` (3 takeaways + test of the month).
 - `src/app/`: `/` landing, `/radar` dashboard, `/report` shareable card, `/api/radar` (sync), `/api/radar/jobs` (POST start) + `/api/radar/jobs/[id]` (GET progress).
 
 ## Env vars (see `.env.example`)
@@ -43,6 +47,9 @@ Rules: atomic questions, structured `state` of facts only, per-option criteria, 
 ## Status
 Done: types, demo mode, full UI (EN/FR), deterministic competitor scoring, review intelligence, radar score, battle mode, 30-day plan, share card (PNG download), data-quality badges, Apify provider (validated ONCE on a real scan: Barlou Burger Marseille, 73 reviews, 3 real competitors, ~77s cold, ~0.2 USD), Jev adapter (validated only against simulated responses).
 NOT validated: real Jev answers (no key yet). Mock confidences are overconfident; thresholds must be calibrated on real Jev output.
+
+## V3 status
+Done (validated on demo + simulated providers only): steps 1-15 of the V3 brief. NOT validated live: food type and threat/benchmark on the real Barlou scan, website audit on real sites, Jev answers to the V3 questions. Uber Eats / Deliveroo / Instagram: abstraction only (NOT_CONNECTED). Local search ranks rely on Apify `rank`/`searchString` fields (unverified on a real run: if absent, the module is skipped). Nearby scan now runs up to 3 profile queries + "restaurant" (was 2 + 1): ~+30% Apify cost per cold scan.
 
 ## Known issues / next steps (priority order)
 1. Add real `TYPESAFE_API_KEY`, run `live-scan.ts`, inspect each decision's state/answer, tune questions and thresholds. Record cases where Jev disagrees with common sense.

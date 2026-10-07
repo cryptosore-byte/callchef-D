@@ -28,18 +28,22 @@ const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if 
   const jev = new TypeSafeDecisionProvider("test-key");
   const r = await runRadar({ name: "x", address: "y", radiusM: 1000, demo: true }, "en", { decider: jev });
   const calls = reqs.length;
-  ok(r.decisions.available && r.decisions.nextAction?.engine === "jev", "decisions come from the real provider (engine = jev)");
+  ok(r.decisions.available && r.decisions.bestTest?.engine === "jev", "decisions come from the real provider (engine = jev)");
   ok(reqs.every((x) => x.url === "https://api.typesafe.ai/v1/systemone" && x.auth === "Bearer test-key"), "endpoint + Bearer auth");
   ok(reqs.every((x) => x.body.model === "jev-latest"), 'model = "jev-latest"');
   const batch = reqs.find((x) => Object.keys(x.body.questions).length > 1);
   ok(!!batch && Object.values<any>(batch.body.questions).every((q) => q.type === "noul" && q.criteria?.true && q.criteria?.false), "competitor yes/no sent as ONE batched request of Noul questions with true/false criteria");
   ok(!!batch && Array.isArray(batch.body.state.candidates) && !!batch.body.state.target?.name, "batch state carries target + candidates as structured JSON");
-  const choice = reqs.find((x) => Object.values<any>(x.body.questions)[0].type === "choice");
-  const cq: any = Object.values(choice.body.questions)[0];
-  ok(cq.criteria && Object.keys(cq.criteria).length >= 2 && typeof Object.values(cq.criteria)[0] === "string", "choice questions carry per-option criteria");
+  const choice = reqs.find((x) => x.body.questions.FOCUS_10H);
+  const cq: any = choice?.body.questions.FOCUS_10H;
+  ok(cq?.criteria && Object.keys(cq.criteria).length >= 2 && typeof Object.values(cq.criteria)[0] === "string", "choice questions carry per-option criteria");
   ok(choice.body.state.target.themes.length > 0 && choice.body.state.competitors.length > 0, "state includes review themes and competitors (facts, not opinions)");
+  ok(["FOCUS_10H", "BEST_TEST", "DONT_TOUCH", "OWNER_DO", "OWNER_NOT"].every((k) => choice.body.questions[k]), "V3 business decisions asked together in ONE request");
+  ok(Array.isArray(choice.body.state.facts) && choice.body.state.facts.every((f: any) => /^E\d+$/.test(f.id) && f.fact), "state carries numbered facts (evidence ids)");
+  ok(Object.values<any>(choice.body.questions).every((q) => Object.entries<any>(q.criteria).every(([o, c]) => /^NO_/.test(o) || /Supported by facts E\d+/.test(c) || q.criteria[o].includes("in `competitors`"))), "every non-empty option cites the facts that support it");
   ok(!JSON.stringify(reqs).includes("mockScores") && !JSON.stringify(reqs).includes("mockProbability"), "mock-only fields never sent to Jev");
-  ok(r.decisions.biggestThreat?.confidence !== undefined && (r.decisions.nextAction?.distribution.length ?? 0) > 1, "probabilities + confidence parsed");
+  ok(r.decisions.bestTest?.confidence !== undefined && (r.decisions.bestTest?.distribution.length ?? 0) > 1, "probabilities + confidence parsed");
+  ok((r.decisions.bestTest?.supportingEvidenceIds.length ?? 0) > 0 && r.decisions.bestTest!.supportingEvidenceIds.every((id) => r.evidence!.some((e) => e.id === id)), "decision cites existing evidence ids only");
   console.log("  requests for one full radar:", calls);
 
   // retry on 429
@@ -53,7 +57,7 @@ const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if 
   ok(!r2.decisions.available && r2.decisions.unavailableReason === "Decision Intelligence temporarily unavailable.", "401 -> 'Decision Intelligence temporarily unavailable.'");
   ok(r2.market.localMarket.restaurantsDetected > 0 && r2.radarScore.total > 0 && r2.competitors.length > 0, "market data + radar score still shown");
   ok(r2.warnings.some((w) => w.includes("not confirmed")), "competitors flagged as unconfirmed");
-  ok(!r2.decisions.nextAction, "no decision invented");
+  ok(!r2.decisions.bestTest && !r2.decisions.owner, "no decision invented");
 
   // network down
   mode = "down";

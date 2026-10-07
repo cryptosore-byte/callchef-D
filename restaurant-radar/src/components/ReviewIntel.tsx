@@ -1,8 +1,8 @@
 "use client";
 import type { RadarResult, ThemeStat } from "@/types";
 import { useT } from "@/i18n/client";
-import { pct } from "@/lib/util";
 import { Bar } from "./ui";
+import { pct } from "@/lib/util";
 
 const MIN = 8;
 
@@ -16,10 +16,12 @@ function Row({ s, kind }: { s: ThemeStat; kind: "love" | "complain" }) {
         <span className="text-sm text-mist">{t("ri.mentions", { n: s.mentions })}</span>
       </div>
       <p className="text-sm font-semibold">{t(kind === "love" ? "ri.posRate" : "ri.negRate", { p: pct(rate) })}
-        {s.recentTrend === "worsening" && <span className="ml-2 text-chili">{t("ri.worse")}</span>}
-        {s.recentTrend === "improving" && <span className="ml-2 text-fennel">{t("ri.better")}</span>}
+        {kind === "love" && s.recentTrend === "worsening" && <span className="ml-2 text-chili">{t("ri.worse")}</span>}
       </p>
       <div className="mt-1.5"><Bar value={rate * 100} tone={kind === "love" ? "fennel" : "chili"} /></div>
+      {kind === "complain" && s.recency && s.recentTrend !== "stable" && s.recentTrend !== "unknown" && (
+        <p className={`mt-1 text-xs font-semibold ${s.recentTrend === "worsening" ? "text-chili" : "text-fennel"}`}>{t(s.recentTrend === "worsening" ? "ri.trendUp" : "ri.trendDown", { a: s.recency.recentPer100, b: s.recency.previousPer100 })}</p>
+      )}
       {s.signals.length > 0 && (
         <p className="mt-1.5 text-xs text-mist">{t("ri.signals", { list: s.signals.map((x) => `${t.sig(x.word)} (${x.count})`).join(", ") })}</p>
       )}
@@ -67,8 +69,7 @@ export function ReviewIntel({ r }: { r: RadarResult }) {
             <ul className="mt-2 space-y-2">
               {s.rootCauses.slice(0, 3).map((c) => (
                 <li key={c.key}>
-                  <div className="flex justify-between text-sm font-semibold"><span>{c.label}</span><span>{pct(c.confidence)}</span></div>
-                  <Bar value={c.confidence * 100} tone="ink" />
+                  <div className="flex justify-between text-sm font-semibold"><span>{c.label}</span><span className="text-mist">{t(c.confidence >= 0.7 ? "plaus.high" : c.confidence >= 0.5 ? "plaus.medium" : "plaus.low")}</span></div>
                 </li>
               ))}
             </ul>

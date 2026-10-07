@@ -11,8 +11,10 @@ import { buildCompetitorCards } from "@/services/CompetitorInsightService";
 import { summarizeReviews } from "@/services/ReviewIntelligenceService";
 import { computeDataQuality, computeMarketFeatures } from "@/services/MarketFeatureService";
 import { computeRadarScore } from "@/services/RadarScoreService";
-import { runJevDecisions, type DecisionContext } from "@/services/JevDecisionService";
-import { buildPlan, runBattle } from "@/services/BattleModeService";
+import { runBattle } from "@/services/BattleModeService";
+import { buildEvidence, discoveryInsight, findOpportunities } from "@/services/EvidenceService";
+import { runBusinessDecisions } from "@/services/BusinessDecisionService";
+import { buildPlanV3 } from "@/services/PlanService";
 import { searchQueries, withFoodProfile } from "@/services/FoodTypeDetectionService";
 import { runDigitalHealth, sourcesFor, type DigitalSources } from "@/services/DigitalHealthRunner";
 
@@ -99,29 +101,26 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
   if (!competitors.length) warnings.push(t("warn.noCompetitors"));
   if (dataQuality.level === "LOW") warnings.push(t("warn.lowQuality"));
 
-  const ctx: DecisionContext = {
-    target, competitors, market, summaries,
-    differentiationScore: radarScore.dimensions.find((d) => d.key === "differentiation")!.score,
-    dataQuality: dataQuality.level, t,
-  };
   emit("decisions");
-  // Decisions, battles and the digital sources are independent: run them together.
   const position = radarScore.dimensions.find((d) => d.key === "position")!.score;
-  const [decisions, battleList, digital] = await Promise.all([
-    runJevDecisions(decider, ctx),
-    Promise.all(competitors.map((c) => runBattle(t, decider, target, summaries[target.id], c, summaries[c.restaurant.id], dataQuality.level))),
-    runDigitalHealth(target, targetRep, competitors, position, opts.digitalSources ?? sourcesFor(demo)),
-  ]);
-  if (!decisions.available && decisions.unavailableReason) warnings.push(decisions.unavailableReason);
+  // Battles run alongside the evidence chain (digital sources -> evidence -> Jev decisions).
+  const battlesP = Promise.all(competitors.map((c) => runBattle(t, decider, target, summaries[target.id], c, summaries[c.restaurant.id], dataQuality.level)));
+  const digital = await runDigitalHealth(target, targetRep, competitors, position, opts.digitalSources ?? sourcesFor(demo));
+  const evidence = buildEvidence({ target, targetRep, competitors, summaries, cards: competitorCards, roles, digital, nearbyRestaurants: nearbyRaw });
+  const opportunities = findOpportunities(evidence);
+  const discovery = discoveryInsight(evidence);
+  const decisions = await runBusinessDecisions(decider, { target, summary: summaries[target.id], competitors, roles, evidence, opportunities, dataQuality: dataQuality.level });
+  if (!decisions.available) { decisions.unavailableReason = t("decision.unavailable"); warnings.push(decisions.unavailableReason); }
+  const plan = buildPlanV3(decisions, evidence, opportunities, competitorCards, roles);
+  const battleList = await battlesP;
 
   const battles: RadarResult["battles"] = {};
   competitors.forEach((c, i) => { battles[c.restaurant.id] = battleList[i]; });
-  const plan = await buildPlan(decider, ctx, decisions).catch(() => undefined);
 
   return {
     id: demo ? "demo" : target.id, demo, locale, input, target, nearby, competitors, summaries, market, decisions,
     radarScore, battles, plan, dataQuality,
     sources: [target.source], generatedAt: new Date().toISOString(), warnings,
-    targetReputation: targetRep, competitorCards, roles, digital,
+    targetReputation: targetRep, competitorCards, roles, digital, evidence, opportunities, discovery,
   };
 }

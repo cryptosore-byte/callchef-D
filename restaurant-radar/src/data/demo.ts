@@ -107,6 +107,8 @@ interface Spec {
   // V3 observable fields (fictional)
   weekendClose?: string; description?: string; attributes?: string[]; imagesCount?: number;
   phone?: string; website?: string; menuUrl?: string; priceKnown?: boolean;
+  /** Negative mentions of these themes are concentrated in the last 90 days (demo of a worsening trend). */
+  recentNeg?: Theme[];
 }
 
 const TARGET_ID = "demo-target";
@@ -116,7 +118,7 @@ const SPECS: Spec[] = [
     id: TARGET_ID, name: "Maison Brasero", address: "14 rue Sainte, 13001 Marseille",
     lat: 43.2951, lon: 5.3745, categories: ["Burger restaurant", "Fast food", "Delivery"],
     food: "burger", format: "fast_food", rating: 4.4, reviewCount: 612, price: 2,
-    open: "11:30", close: "22:00", seed: 11,
+    open: "11:30", close: "22:00", seed: 11, recentNeg: ["WAITING_TIME"],
     description: "Burgers gourmet faits maison, viande halal, à emporter et en livraison.",
     attributes: ["Delivery", "Takeaway", "Halal food", "Dine-in"], imagesCount: 38, phone: "+33 4 00 00 00 00",
     website: "https://example.org/maison-brasero",
@@ -254,7 +256,8 @@ function genReviews(spec: Spec, count: number, nowMs: number): Review[] {
     const neg = group.filter((m) => m.sentiment === "negative").length;
     const pos = group.filter((m) => m.sentiment === "positive").length;
     const rating = Math.max(1, Math.min(5, Math.round(3 + (pos - neg * 1.4) * 1.1 + (rnd() - 0.5))));
-    const daysAgo = Math.floor(rnd() * 365);
+    const recentBias = group.some((m) => m.sentiment === "negative" && spec.recentNeg?.includes(m.theme));
+    const daysAgo = recentBias ? Math.floor(rnd() * 90) : Math.floor(rnd() * 365);
     reviews.push({
       id: `${spec.id}-r${idx++}`,
       text: group.map((m) => phraseFor.get(m)!.text).join(". ") + ".",

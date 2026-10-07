@@ -53,15 +53,15 @@ function Card({ title, s, note, children }: { title: string; s: Section; note?: 
   );
 }
 
-export function DigitalHealth({ r }: { r: RadarResult }) {
-  const { t, locale } = useLocale();
+/** Secondary overview tiles (DIGITAL RESTAURANT HEALTH). */
+export function HealthTiles({ r }: { r: RadarResult }) {
+  const { t } = useLocale();
   const d = r.digital;
   if (!d) return null;
-  const city = r.input.address;
   return (
-    <section aria-labelledby="health">
-      <h2 id="health" className="font-display text-2xl font-bold md:text-3xl">{t("health.title")}</h2>
-      <p className="mb-3 text-sm text-mist">{t("health.sub")}</p>
+    <div aria-labelledby="health">
+      <h3 id="health" className="font-display text-lg font-bold">{t("health.title")}</h3>
+      <p className="mb-2 text-xs text-mist">{t("health.sub")}</p>
       <ul className="grid grid-cols-2 gap-2 md:grid-cols-6">
         {d.overview.map((o) => (
           <li key={o.key} className="rounded-xl border border-line bg-paper p-3">
@@ -71,8 +71,19 @@ export function DigitalHealth({ r }: { r: RadarResult }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+/** Detailed digital sections (question 4: where am I invisible or weak online?). */
+export function DigitalHealth({ r }: { r: RadarResult }) {
+  const { t, locale } = useLocale();
+  const d = r.digital;
+  if (!d) return null;
+  const city = r.input.address;
+  return (
+    <section>
+      <div className="grid gap-3 md:grid-cols-2">
         <Card title={t("rep.title")} s={d.reputation}>
           <ul className="mt-2 space-y-1 text-sm">
             {d.reputation.platforms.map((p) => (

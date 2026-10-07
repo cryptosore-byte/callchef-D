@@ -52,17 +52,26 @@ export class TypeSafeDecisionProvider implements DecisionProvider {
     }
   }
 
-  async choose(req: ChoiceRequest): Promise<ChoiceResponse> {
-    const criteria = req.criteria ?? Object.fromEntries(req.options.map((o) => [o, null]));
-    const answers = await this.evaluate(req.state ?? req.context, {
-      [req.id]: { type: "choice", instructions: req.question, criteria },
-    });
-    const a = answers[req.id];
-    if (a?.type !== "choice" || typeof a.choice !== "string" || !a.probabilities) throw new JevError("bad_response", req.id);
+  private toChoiceQ(req: ChoiceRequest): Q {
+    return { type: "choice", instructions: req.question, criteria: req.criteria ?? Object.fromEntries(req.options.map((o) => [o, null])) };
+  }
+  private toChoice(a: any, id: string): ChoiceResponse {
+    if (a?.type !== "choice" || typeof a.choice !== "string" || !a.probabilities) throw new JevError("bad_response", id);
     const distribution = Object.entries(a.probabilities as Record<string, number>)
       .map(([option, probability]) => ({ option, probability }))
       .sort((x, y) => y.probability - x.probability);
     return { choice: a.choice, confidence: Number(a.confidence) || 0, distribution };
+  }
+
+  async choose(req: ChoiceRequest): Promise<ChoiceResponse> {
+    const answers = await this.evaluate(req.state ?? req.context, { [req.id]: this.toChoiceQ(req) });
+    return this.toChoice(answers[req.id], req.id);
+  }
+
+  async chooseBatch(state: unknown, reqs: ChoiceRequest[]): Promise<Record<string, ChoiceResponse>> {
+    if (!reqs.length) return {};
+    const answers = await this.evaluate(state, Object.fromEntries(reqs.map((r) => [r.id, this.toChoiceQ(r)])));
+    return Object.fromEntries(reqs.map((r) => [r.id, this.toChoice(answers[r.id], r.id)]));
   }
 
   private toQ(r: BinaryRequest): Q {

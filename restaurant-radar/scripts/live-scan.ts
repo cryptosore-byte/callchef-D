@@ -13,8 +13,18 @@ import { runRadar } from "../src/lib/pipeline";
     console.log("SCORE", r.radarScore.total, r.radarScore.dimensions.map((d) => `${d.key}=${d.score}`).join(" "), "| qualité", r.dataQuality.level);
     const s = r.summaries[t.id];
     console.log("THÈMES", s.stats.slice(0, 8).map((x) => `${x.theme} ${x.mentions} (+${x.positive}/-${x.negative})`).join(" | "));
+    const fp = t.foodProfile;
+    console.log("TYPE", fp?.primary, fp?.level, fp?.confidence, "| modificateurs", fp?.modifiers.map((m) => m.key).join(","), "| preuves", fp?.evidence.map((e) => `${e.source}:${e.text}`).join(" ; "));
+    for (const c of r.competitors) console.log("  ", c.restaurant.name, `${c.restaurant.rating}★/${c.restaurant.reviewCount}`, "ajustée", c.reputation.adjustedRating, "menace", c.threatLevel, Math.round(c.threatPotential), "référence", c.benchmarkLevel, Math.round(c.benchmarkQuality), "|", r.competitorCards?.[c.restaurant.id]?.verdict);
+    console.log("SANTÉ", r.digital?.overview.map((o) => `${o.key}=${o.score ?? "n/a"}`).join(" "), "| recherches", JSON.stringify(r.digital?.visibility.search.results));
+    console.log("PREUVES"); for (const e of r.evidence ?? []) console.log("  ", e.id, e.strength, e.fact);
+    console.log("DÉCOUVERTE", JSON.stringify(r.discovery));
     const d = r.decisions;
-    if (d.available) for (const k of ["biggestThreat", "whyTheyWin", "advantage", "weakness", "nextAction"] as const) console.log(k, d[k]?.choice, Math.round((d[k]?.confidence ?? 0) * 100) + "%", d[k]?.tier);
+    if (d.available) for (const k of ["focus10h", "invest500", "learnFrom", "whatToLearn", "dontTouch", "bestTest"] as const) {
+      const x = d[k]; if (!x) { console.log(k, "non posé (preuves insuffisantes)"); continue; }
+      console.log(k, x.choice, x.tier, "brut", Math.round(x.rawConfidence * 100) + "%", "| preuves", x.supportingEvidenceIds.join(","), "| top3", x.distribution.slice(0, 3).map((y) => `${y.option}:${Math.round(y.probability * 100)}`).join(","), "|", x.engine);
+    }
+    if (d.owner) console.log("SI NOUS GÉRIONS", d.owner.action.choice, "/ PAS", d.owner.notDo.choice, "| pourquoi", d.owner.why.join(","));
     console.log("WARNINGS", r.warnings);
   } catch (e) { console.log("ERREUR", (e as Error).message); }
 })();

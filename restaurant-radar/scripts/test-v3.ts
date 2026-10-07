@@ -5,6 +5,10 @@ import { adjustedRating } from "../src/services/ReputationService";
 import { scoreCandidates } from "../src/services/CompetitorDetectionService";
 import { auditHtml, localSearchFrom } from "../src/providers/DigitalProviders";
 import { aiSection, reputationSection, socialSection, visibilitySection } from "../src/services/DigitalHealthService";
+import { runRadar } from "../src/lib/pipeline";
+import { makeT } from "../src/i18n";
+import { evidenceText, paramsText } from "../src/lib/evidence";
+import { reasonText } from "../src/lib/reasons";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if (!c) fails++; };
@@ -78,6 +82,22 @@ const rev = (texts: string[]) => texts.map((text, i) => ({ id: `r${i}`, text, ra
   ok(au.schemaTypes.includes("Restaurant") && au.schemaHours && au.hasMenuText && au.schemaCuisine === "Burgers", "website audit parses JSON-LD, hours and a text menu");
   const vis = visibilitySection({ ...target, imagesCount: undefined }, true, ls, au);
   ok(vis.checks.find((c) => c.key === "vis.photos")?.status === "UNKNOWN", "unknown photo count is excluded, not scored as zero");
+
+  // ---- every rendered owner-facing sentence is translated (no raw keys), in FR and EN
+  for (const loc of ["fr", "en"] as const) {
+    const t = makeT(loc);
+    const r = await runRadar({ name: "x", address: "y", radiusM: 1000, demo: true }, loc);
+    const texts: string[] = [];
+    for (const e of r.evidence ?? []) texts.push(evidenceText(t, e));
+    for (const c of Object.values(r.competitorCards ?? {})) for (const x of [...c.whyItMatters, ...c.theyDoBetter, ...c.youDoBetter]) texts.push(reasonText(t, x));
+    for (const c of Object.values(r.competitorCards ?? {})) texts.push(t("verdict." + c.verdict, c.verdictParams), t("repnote." + c.reputationNote));
+    for (const d of Object.values(r.decisions)) if (d && typeof d === "object" && "distribution" in d) for (const o of (d as any).distribution) if (!r.competitors.some((c) => c.restaurant.name === o.option)) texts.push(t("dopt." + o.option));
+    if (r.discovery) texts.push(t(r.discovery.code, paramsText(t, r.discovery.params)));
+    for (const s of [r.digital!.reputation, r.digital!.visibility, r.digital!.ai, r.digital!.social]) { for (const c of s.checks) texts.push(t(c.key, c.params)); if (s.insight) texts.push(t(s.insight.code, s.insight.params)); }
+    for (const c of [...r.competitors.map((x) => x.restaurant), r.target]) if (c.foodProfile) texts.push(t("cuisine." + c.foodProfile.primary), ...c.foodProfile.modifiers.map((m) => t("mod." + m.key)));
+    const raw = texts.filter((x) => /\b(grp|dopt|evi|reason|cuisine|mod|verdict|repnote|measure|disc|planv3|rep|vis|ai|social|aishort|grpPraise)\.[A-Za-z_]/.test(x));
+    ok(raw.length === 0, `${loc}: ${texts.length} rendered sentences, no raw i18n key${raw.length ? " -> " + raw.slice(0, 3).join(" | ") : ""}`);
+  }
 
   console.log(fails ? `${fails} FAILED` : "all passed");
   process.exit(fails ? 1 : 0);
