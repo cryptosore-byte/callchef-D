@@ -40,6 +40,9 @@ pm2 save
 pm2 startup systemd -u "$(whoami)" --hp "$HOME" >/dev/null 2>&1 || true
 command -v ufw >/dev/null && ufw allow "$PORT"/tcp >/dev/null 2>&1 || true
 
+# Weekly monitoring: cheap refresh of followed restaurants every Monday 06:12 (decides CACHE / LIGHT / MONTHLY itself)
+( crontab -l 2>/dev/null | grep -v "refresh-all.ts"; echo "12 6 * * 1 cd $(pwd) && npx tsx scripts/refresh-all.ts >> $(pwd)/.data/refresh.log 2>&1" ) | crontab - 2>/dev/null || true
+
 IP="$(curl -fsS https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
 echo
 echo "Ready: http://$IP:$PORT  (logs: pm2 logs restaurant-radar)"
