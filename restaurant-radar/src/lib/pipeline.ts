@@ -6,7 +6,8 @@ import { ApifyError, ApifyPlacesProvider, DemoPlacesProvider, type PlacesProvide
 import type { Competitor, CompetitorCandidate, RadarInput, RadarResult, Restaurant, ReviewSummary } from "@/types";
 import { makeT, type Locale } from "@/i18n";
 import { competitorKeywords } from "@/providers/apify/normalize";
-import { confirmCompetitors, scoreCandidates, withThreatScores } from "@/services/CompetitorDetectionService";
+import { confirmCompetitors, scoreCandidates, targetReputation, withThreatScores } from "@/services/CompetitorDetectionService";
+import { buildCompetitorCards } from "@/services/CompetitorInsightService";
 import { summarizeReviews } from "@/services/ReviewIntelligenceService";
 import { computeDataQuality, computeMarketFeatures } from "@/services/MarketFeatureService";
 import { computeRadarScore } from "@/services/RadarScoreService";
@@ -30,7 +31,7 @@ export interface RadarPartial {
   target?: Restaurant;
   nearbyCount?: number;
   /** Confirmed competitors before their reviews are read: no threat score yet. */
-  competitors?: Pick<Competitor, "restaurant" | "distanceM" | "competitorProbability" | "competitorConfidence">[];
+  competitors?: Pick<Competitor, "restaurant" | "distanceM" | "competitorProbability" | "competitorConfidence" | "reputation" | "threatLevel" | "benchmarkLevel">[];
 }
 export interface RadarProgress { stage: Stage; partial: RadarPartial; }
 
@@ -70,7 +71,7 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
     confirmed0 = nearby.slice(0, CONFIG.limits.maxCompetitorsAnalyzed).map((c) => ({ ...c, competitorProbability: c.relevance / 100, competitorConfidence: 0, threatScore: c.threatPotential }));
   }
 
-  partial.competitors = confirmed0.map((c) => ({ restaurant: slim(c.restaurant), distanceM: c.distanceM, competitorProbability: c.competitorProbability, competitorConfidence: c.competitorConfidence }));
+  partial.competitors = confirmed0.map((c) => ({ restaurant: slim(c.restaurant), distanceM: c.distanceM, competitorProbability: c.competitorProbability, competitorConfidence: c.competitorConfidence, reputation: c.reputation, threatLevel: c.threatLevel, benchmarkLevel: c.benchmarkLevel }));
   emit("reviews");
 
   // Reviews only for confirmed competitors (cost control). Failure degrades gracefully.
@@ -87,6 +88,8 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
   for (const c of confirmed) summaries[c.restaurant.id] = summarizeReviews(c.restaurant, t);
   const competitors = withThreatScores(target, confirmed, summaries);
 
+  const targetRep = targetReputation(target, nearbyRaw);
+  const { cards: competitorCards, roles } = buildCompetitorCards(target, targetRep, competitors, summaries);
   const market = computeMarketFeatures(target, nearby, competitors, summaries);
   const radarScore = computeRadarScore(t, target, market, nearby.map((n) => n.restaurant), summaries[target.id]);
   const dataQuality = computeDataQuality(t, summaries[target.id].reviewsAnalyzed, competitors, summaries, nearby.length, target.source.retrievedAt);
@@ -115,5 +118,6 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
     id: demo ? "demo" : target.id, demo, locale, input, target, nearby, competitors, summaries, market, decisions,
     radarScore, battles, plan, dataQuality,
     sources: [target.source], generatedAt: new Date().toISOString(), warnings,
+    targetReputation: targetRep, competitorCards, roles,
   };
 }

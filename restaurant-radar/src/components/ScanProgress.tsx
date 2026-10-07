@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { JobView } from "@/lib/jobs";
 import { STAGES, type Stage } from "@/lib/stages";
 import { km } from "@/lib/labels";
-import { pct } from "@/lib/util";
+import { stars } from "@/lib/reasons";
 import { useLocale } from "@/i18n/client";
 
 const STAGE_LABEL: Record<Stage, string> = {
@@ -49,7 +49,7 @@ export function ScanProgress({ job, startedAt }: { job: JobView | null; startedA
 
       {p?.competitors && (
         <section aria-labelledby="scan-comp" className="rise">
-          <h2 id="scan-comp" className="font-display text-2xl font-bold md:text-3xl">{t("war.title")}</h2>
+          <h2 id="scan-comp" className="font-display text-2xl font-bold md:text-3xl">{t("cc.title")}</h2>
           {p.competitors.length === 0 ? (
             <p className="mt-4 rounded-xl border border-line bg-paper p-5">{t("warn.noCompetitors")}</p>
           ) : (
@@ -57,11 +57,12 @@ export function ScanProgress({ job, startedAt }: { job: JobView | null; startedA
               {p.competitors.map((c) => (
                 <li key={c.restaurant.id} className="rounded-2xl border border-line bg-paper p-4">
                   <p className="font-display text-xl font-extrabold">{c.restaurant.name}</p>
-                  <p className="text-sm text-mist">{t.opt(c.restaurant.primaryFoodType)}, {t("war.away", { d: km(c.distanceM, locale) })}</p>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    <div><dt className="text-xs text-mist">{t("war.rating")}</dt><dd className="font-bold">{c.restaurant.rating}<span className="text-xs font-normal text-mist"> ({c.restaurant.reviewCount})</span></dd></div>
-                    <div><dt className="text-xs text-mist">{t("war.competitor")}</dt><dd className="font-bold">{pct(c.competitorProbability)}</dd></div>
-                  </dl>
+                  <p className="text-sm text-mist">{c.restaurant.foodProfile && c.restaurant.foodProfile.level !== "LOW" ? t("cuisine." + c.restaurant.foodProfile.primary) : t.opt(c.restaurant.primaryFoodType)}, {t("war.away", { d: km(c.distanceM, locale) })}</p>
+                  <p className="mt-2 text-sm"><b>{stars(c.restaurant.rating, locale)} ★</b> <span className="text-mist">{t("cc.reviews", { n: c.restaurant.reviewCount })}</span></p>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-bold">
+                    <span className="rounded-full bg-line px-2.5 py-0.5">{t("cc.threat." + c.threatLevel)}</span>
+                    <span className="rounded-full border border-line px-2.5 py-0.5">{t("cc.bench." + c.benchmarkLevel)}</span>
+                  </div>
                 </li>
               ))}
             </ul>

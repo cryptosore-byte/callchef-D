@@ -315,4 +315,8 @@ export interface RadarResult {
   sources: SourceMeta[];
   generatedAt: string;
   warnings: string[];
+  // ---- V3 ----
+  targetReputation?: Reputation;
+  competitorCards?: Record<string, import("@/services/CompetitorInsightService").CompetitorCard>;
+  roles?: import("@/services/CompetitorInsightService").CompetitorRoles;
 }
