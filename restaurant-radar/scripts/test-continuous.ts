@@ -99,6 +99,9 @@ const input = { name: "Burger Bastide", address: "Marseille", radiusM: 1000 };
   const target = { ...rec7.places[rec7.targetId], reviews: Object.values(rec7.reviews[rec7.targetId]) };
   startExperiment(rec7, "RUN_REVIEW_GENERATION_TEST", target, now);
   saveRecord(rec7);
+  calls.length = 0;
+  const rT = await runScan(input, "fr", { mode: "cache" });
+  ok(calls.length === 0 && rT.decisions.thisWeek?.choice === "CONTINUE_EXPERIMENT", `test running: this week = ${rT.decisions.thisWeek?.choice} (one test at a time), 0 provider calls`);
   now = T0 + 35 * DAY;
   world.T1 = { ...world.T1, reviewsCount: 600 };
   calls.length = 0;
@@ -108,6 +111,14 @@ const input = { name: "Burger Bastide", address: "Marseille", radiusM: 1000 };
   ok(!!fin && ["COMPLETED", "INCONCLUSIVE"].includes(fin.status) && !!fin.result, `experiment measured: ${fin?.result?.before.value} -> ${fin?.result?.after.value} ${fin?.result?.after.unit} = ${fin?.result?.label}`);
   ok(r35.continuous!.timeline.some((e) => e.kind === "EXPERIMENT_COMPLETED"), "timeline records the result");
   ok(!!r35.continuous!.monthly, "monthly report available after a month of snapshots");
+
+  // ---- Deep dive on ONE area: only that area is fetched
+  calls.length = 0;
+  const dd = await runScan(input, "fr", { area: "reviews" });
+  ok(calls.length > 0 && !calls.some((x) => x.customGeolocation) && calls.some((x) => x.maxReviews === 200), `deep dive "reviews": ${calls.length} calls, target reviews only + benchmarks, no market rescan (~$${dd.cost?.estimatedUsd})`);
+  calls.length = 0;
+  await runScan(input, "fr", { area: "instagram" });
+  ok(calls.length === 0, "deep dive on a non-connected source: no provider call");
 
   Date.now = realNow;
   console.log(fails ? `${fails} FAILED` : "all passed");

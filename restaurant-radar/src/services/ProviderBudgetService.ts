@@ -24,6 +24,19 @@ export class ProviderBudget {
     return u.apifyRun + places * u.apifyPlace + reviews * u.apifyReview;
   }
 
+  /** Typical cost of each scan mode with the current limits (admin only; ceilings, not invoices). */
+  static projections() {
+    const D = CONFIG.reviewDepth, L = CONFIG.limits;
+    const perSearch = Math.max(5, Math.ceil(L.maxNearbyRestaurants / 2));
+    const e = ProviderBudget.apifyEstimate;
+    const comps = L.maxCompetitorsAnalyzed, strong = Math.min(D.strongBenchmarkCount, comps);
+    const deep = e(3, 3 * D.target) + e(4 * perSearch, 0) + e(strong, strong * D.strongBenchmark) + e(comps - strong, (comps - strong) * D.secondaryCompetitor);
+    const light = e(1, D.lightTargetNew) + e(comps, 0) + e(perSearch, 0) + e(1, D.lightCompetitorNew);
+    const monthly = e(3, 3 * 50) + e(4 * perSearch, 0) + e(strong, strong * D.strongBenchmark) + e(comps - strong, (comps - strong) * D.secondaryCompetitor);
+    const r = (x: number) => Number(x.toFixed(3));
+    return { initialDeepScanUsd: r(deep), weeklyRefreshUsd: r(light), monthlyRefreshUsd: r(monthly), firstMonthUsd: r(deep + 3 * light), steadyMonthUsd: r(monthly + 3 * light) };
+  }
+
   /** Ask before a paid call. Core (priority <= 3) always runs; optional calls must fit in what is left. */
   allow(source: string, priority: Priority, estimateUsd: number): boolean {
     const ok = priority <= 3 || this.spentUsd + estimateUsd <= this.ceilingUsd;
@@ -48,7 +61,7 @@ export class ProviderBudget {
     if ([...seen.values()].some((n) => n > 2)) warnings.push("SAME_SOURCE_REPEATED");
     if (this.counters.reviewsNew > CONFIG.budget.reviewSpikeThreshold) warnings.push("REVIEW_VOLUME_SPIKE");
     if (this.entries.some((e) => e.priority >= 4 && e.status === "RUN" && e.estimateUsd > this.ceilingUsd * 0.5)) warnings.push("OPTIONAL_SOURCE_EXPENSIVE");
-    return { mode: this.mode, ceilingUsd: this.ceilingUsd, estimatedUsd: Number(this.spentUsd.toFixed(4)), cacheHitRatio: Number(ratio.toFixed(2)), ...this.counters, entries: this.entries, warnings };
+    return { mode: this.mode, projections: ProviderBudget.projections(), ceilingUsd: this.ceilingUsd, estimatedUsd: Number(this.spentUsd.toFixed(4)), cacheHitRatio: Number(ratio.toFixed(2)), ...this.counters, entries: this.entries, warnings };
   }
 }
 export type BudgetReport = ReturnType<ProviderBudget["report"]>;

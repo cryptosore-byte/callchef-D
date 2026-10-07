@@ -32,6 +32,7 @@ export function cacheSet(key: string, value: unknown, ttlHours: number) {
   persist();
 }
 export function cacheClear() { load().clear(); persist(); }
+export function cacheDelete(key: string) { if (load().delete(key)) persist(); }
 
 /** Return the cached value or compute, store and return it. */
 export async function memo<T>(key: string, ttlHours: number, fn: () => Promise<T>): Promise<T> {

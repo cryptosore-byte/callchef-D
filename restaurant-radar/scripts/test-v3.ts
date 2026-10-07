@@ -99,6 +99,27 @@ const rev = (texts: string[]) => texts.map((text, i) => ({ id: `r${i}`, text, ra
     ok(raw.length === 0, `${loc}: ${texts.length} rendered sentences, no raw i18n key${raw.length ? " -> " + raw.slice(0, 3).join(" | ") : ""}`);
   }
 
+  // ---- owner view (continuous intelligence) is fully translated too
+  const { runScan } = await import("../src/lib/orchestrator");
+  const { changeText, formatMeasure } = await import("../src/components/Owner");
+  for (const loc of ["fr", "en"] as const) {
+    const t = makeT(loc);
+    const r = await runScan({ name: "Maison Brasero", address: "Marseille", radiusM: 1000, demo: true }, loc, { mode: loc === "fr" ? "deep" : "cache" }); // a language switch re-renders stored data
+    const c = r.continuous!;
+    const texts: string[] = [t(c.meaning)];
+    for (const ch of c.changes) texts.push(t("chgk." + ch.type), changeText(t, ch, "title"), changeText(t, ch, "detail"));
+    for (const e of c.timeline) texts.push(e.kind === "CHANGE" ? changeText(t, { type: e.code.replace("chg.", "") as any, params: e.params ?? {}, importance: 0, tone: "watch" }, "title") : t(e.code, { ...(e.params ?? {}), type: e.params?.type ? t("dopt." + e.params.type) : "", label: e.params?.label ? t("res." + e.params.label) : "" }));
+    for (const sc of r.scenarios ?? []) texts.push(t("whatif.q." + sc.experiment), t("exp.measure." + sc.experiment), t("verdictS." + (r.decisions.scenarios?.[sc.experiment]?.choice ?? "TEST")));
+    if (c.active) texts.push(t("dopt." + c.active.type), t("exp.hyp." + c.active.type), t("exp.todo." + c.active.type, { w: 4 }), formatMeasure(t, c.active.current), t("exp.logLabel." + c.active.type));
+    if (c.finished?.result) texts.push(t("res." + c.finished.result.label), t("res.note." + c.finished.result.label), formatMeasure(t, c.finished.result.after));
+    for (const ev of r.evidence ?? []) texts.push(evidenceText(t, ev));
+    for (const k of ["thisWeek", "watch"] as const) { const d = r.decisions[k]; if (d && !d.restaurantId) texts.push(t(d.choice === "CONTINUE_EXPERIMENT" ? "next.continue" : "dopt." + d.choice)); }
+    if (r.advantage) texts.push(t("adv." + r.advantage.key));
+    for (const m of r.menuInsights ?? []) texts.push(t(m.code, m.params as any));
+    const raw = texts.filter((x) => /\b(chg|chgk|meaning|tl|dopt|exp|res|unit|whatif|verdictS|adv|evi|menu|grp|themeRef)\.[A-Za-z_]/.test(x) || /\{\w+\}/.test(x));
+    ok(c.changes.length > 0 && !!c.active && raw.length === 0, `${loc}: owner view ${texts.length} sentences, no raw key or unfilled placeholder${raw.length ? " -> " + raw.slice(0, 3).join(" | ") : ""}`);
+  }
+
   console.log(fails ? `${fails} FAILED` : "all passed");
   process.exit(fails ? 1 : 0);
 })();

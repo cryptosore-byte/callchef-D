@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RadarInput, RadarResult } from "@/types";
 import type { JobView } from "@/lib/jobs";
 import { useLocale } from "@/i18n/client";
-import { pendingJob, pollScan, startScan, type PendingJob } from "@/lib/scanJob";
+import { pendingJob, pollScan, startScan, type PendingJob, type ScanBody } from "@/lib/scanJob";
 
 export const STORAGE_KEY = "rr:result";
 const DEFAULT_INPUT: RadarInput = { name: "Maison Brasero", address: "Marseille", radiusM: 1000, demo: true };
@@ -19,6 +19,8 @@ export function useRadarResult() {
   const [job, setJob] = useState<JobView | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const resultRef = useRef<RadarResult | null>(null);
+  resultRef.current = result;
   useEffect(() => {
     let cancelled = false;
     const follow = (p: PendingJob) => {
@@ -37,10 +39,20 @@ export function useRadarResult() {
     try { base = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null"); } catch { base = null; }
     if (base && base.locale === locale) { setResult(base); return; }
     if (base) setResult(base); // keep showing the previous language while we regenerate
-    startScan({ ...(running?.input ?? base?.input ?? DEFAULT_INPUT), locale })
+    // A language change only re-renders stored data: mode "cache" makes no provider call.
+    startScan({ ...(running?.input ?? base?.input ?? DEFAULT_INPUT), locale, mode: base ? "cache" : "auto" })
       .then((p) => !cancelled && follow(p))
       .catch(() => !cancelled && setError("network"));
     return () => { cancelled = true; };
   }, [locale]);
-  return { result, job, startedAt, error };
+  /** Re-run with a given mode (e.g. "cache" after an owner action, "deep" + area for a deep dive). */
+  const rerun = useCallback(async (mode: ScanBody["mode"], area?: string) => {
+    const r = resultRef.current;
+    if (!r) return;
+    const p = await startScan({ ...r.input, locale, mode, area });
+    const d = await pollScan(p, () => {}, () => false);
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+    setResult(d);
+  }, [locale]);
+  return { result, job, startedAt, error, rerun };
 }

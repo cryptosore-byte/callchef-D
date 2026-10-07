@@ -23,6 +23,7 @@ Next.js 14 (app router) + TypeScript + Tailwind. No DB yet.
     npx tsx scripts/test-jev.ts                # 20 checks, SIMULATED TypeSafe responses
     npx tsx scripts/test-jobs.ts               # async scan job: stage order, competitors revealed early, errors
     npx tsx scripts/test-v3.ts                 # V3: food type, Bayesian rating, threat vs benchmark, no-data-no-claim, no raw i18n keys
+    npx tsx scripts/test-continuous.ts         # deep -> cache -> light (+market changes) -> test -> monthly, costs and incremental reviews
     npx tsx scripts/checki18n.ts               # every t("key") exists in en + fr, placeholders match
     npx tsx scripts/live-scan.ts "Name" "City" 2000   # REAL scan (costs money; needs APIFY_API_TOKEN)
 Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify to avoid cache bleed.
@@ -47,6 +48,15 @@ Rules: atomic questions, structured `state` of facts only, per-option criteria, 
 ## Status
 Done: types, demo mode, full UI (EN/FR), deterministic competitor scoring, review intelligence, radar score, battle mode, 30-day plan, share card (PNG download), data-quality badges, Apify provider (validated ONCE on a real scan: Barlou Burger Marseille, 73 reviews, 3 real competitors, ~77s cold, ~0.2 USD), Jev adapter (validated only against simulated responses).
 NOT validated: real Jev answers (no key yet). Mock confidences are overconfident; thresholds must be calibrated on real Jev output.
+
+## Continuous intelligence (cost-first)
+- `src/lib/orchestrator.ts` `runScan(input, locale, {mode, area})` is THE entry for the app (API + jobs). Modes: DEEP_SCAN (first time / >90 days / explicit), MONTHLY_REFRESH (>30 days, 50 target reviews), LIGHT_REFRESH (weekly: 20 newest target reviews, competitor counts/hours, one cheap new-places search, reviews only for competitors whose count moved), CACHE (<6 days or owner action: zero provider call). Deep dive (`area`) refreshes ONE area only.
+- Persistence: `DATA_DIR` (default ./.data, gitignored): restaurant records (places, reviews by stable hash with their classification, snapshots, timeline, experiments, owner financials) + provider cache. Reviews are classified ONCE.
+- `ProviderBudget` estimates each paid call (unit prices in CONFIG.budget, env-overridable: ceilings, not invoices), skips optional calls over the ceiling, reports cache hits / reviews reused / Jev requests. `CachedDecisionProvider`: identical Jev state+questions are never re-sent.
+- `src/services/continuous/`: snapshots, MarketChangeService (significance thresholds, max 3), timeline, ExperimentService (one test at a time, auto or owner-measured, conservative verdict, never causal), OpportunitySimulator (owner numbers only, labelled SIMULATION), MenuIntelligence (provider not connected live; demo only), Advantage + ExpectationGap, Scenarios, MonthlyReport, OwnerActions (+ `/api/restaurants/[id]/experiments|financials`).
+- Jev V4 (same batch): THIS_WEEK, WATCH, EXPERIMENT_RESULT (only if the rule says the sample is sufficient), SCENARIO:<test>, MENU_ACTION. Jev gets `state.summary` (small normalized numbers) + numbered facts, never raw reviews.
+- Owner page: Today (3 facts, 1 insight, 1 test + "why this test") / What changed / Next move / Customers / Main competitors (1 watch + 1 benchmark) / Digital presence (labels). Everything else under "Plus de détails". `?debug=1` shows cost metrics.
+- Demo: `src/data/demoHistory.ts` seeds a FICTIONAL history (previous snapshots, a finished and a running test) so the demo shows the loop.
 
 ## V3 status
 Done (validated on demo + simulated providers only): steps 1-15 of the V3 brief. NOT validated live: food type and threat/benchmark on the real Barlou scan, website audit on real sites, Jev answers to the V3 questions. Uber Eats / Deliveroo / Instagram: abstraction only (NOT_CONNECTED). Local search ranks rely on Apify `rank`/`searchString` fields (unverified on a real run: if absent, the module is skipped). Nearby scan now runs up to 3 profile queries + "restaurant" (was 2 + 1): ~+30% Apify cost per cold scan.

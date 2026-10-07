@@ -84,16 +84,23 @@ function Lines({ items, empty }: { items: Reason[]; empty: string }) {
   return <ul className="space-y-1 text-sm">{items.map((r, i) => <li key={i} className="flex gap-2"><span aria-hidden className="text-mist">•</span><span>{reasonText(t, r)}</span></li>)}</ul>;
 }
 
-export function WarRoom({ r }: { r: RadarResult }) {
+export function WarRoom({ r, focus = false }: { r: RadarResult; focus?: boolean }) {
   const t = useT();
   const { locale } = useLocale();
   const [sel, setSel] = useState<Competitor | null>(null);
+  const [all, setAll] = useState(!focus);
   const confirmedIds = new Set(r.competitors.map((c) => c.restaurant.id));
   const ruledOut = r.nearby.filter((n) => !confirmedIds.has(n.restaurant.id));
   const roles = r.roles;
   // Order: main threat, best benchmark, emerging threats, then the rest by threat.
   const rank = (c: Competitor) => (c.restaurant.id === roles?.topThreatId ? 0 : c.restaurant.id === roles?.bestBenchmarkId ? 1 : roles?.emergingThreatIds.includes(c.restaurant.id) ? 2 : 3);
-  const list = [...r.competitors].sort((a, b) => rank(a) - rank(b) || b.threatScore - a.threatScore);
+  const sorted = [...r.competitors].sort((a, b) => rank(a) - rank(b) || b.threatScore - a.threatScore);
+  // Owner view: ONE competitor to watch + ONE benchmark; the rest on demand.
+  const watchId = r.decisions.watch?.restaurantId ?? roles?.topThreatId;
+  const focusIds = [watchId, roles?.bestBenchmarkId].filter(Boolean) as string[];
+  // Fill up to two cards (the watch target can also be the best benchmark).
+  const picked = sorted.filter((c) => focusIds.includes(c.restaurant.id));
+  const list = all ? sorted : [...picked, ...sorted.filter((c) => !picked.includes(c))].slice(0, 2);
 
   return (
     <section aria-labelledby="wr">
@@ -152,7 +159,8 @@ export function WarRoom({ r }: { r: RadarResult }) {
         </ul>
       )}
 
-      {ruledOut.length > 0 && (
+      {!all && sorted.length > list.length && <button onClick={() => setAll(true)} className="mt-3 text-sm font-bold underline">{t("cc.showAll", { n: sorted.length })}</button>}
+      {all && ruledOut.length > 0 && (
         <details className="mt-3 rounded-xl border border-line bg-paper p-4 text-sm">
           <summary className="cursor-pointer font-semibold">{t("war.ruledOut", { n: ruledOut.length })}</summary>
           <ul className="mt-2 grid gap-1 sm:grid-cols-2">

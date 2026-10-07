@@ -11,7 +11,9 @@ export interface PendingJob { id: string; input: RadarInput; locale: string; sta
 // One in-flight start per request body: React StrictMode runs effects twice and a scan costs money.
 const inflight = new Map<string, Promise<PendingJob>>();
 
-export function startScan(body: RadarInput & { locale: string }): Promise<PendingJob> {
+export type ScanBody = RadarInput & { locale: string; mode?: "auto" | "deep" | "light" | "monthly" | "cache"; area?: string };
+
+export function startScan(body: ScanBody): Promise<PendingJob> {
   const key = JSON.stringify(body);
   let p = inflight.get(key);
   if (!p) {
@@ -21,11 +23,11 @@ export function startScan(body: RadarInput & { locale: string }): Promise<Pendin
   return p;
 }
 
-async function create(body: RadarInput & { locale: string }): Promise<PendingJob> {
+async function create(body: ScanBody): Promise<PendingJob> {
   const res = await fetch("/api/radar/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const d = await res.json();
   if (!res.ok || !d.id) throw new Error(d.error || "start");
-  const { locale, ...input } = body;
+  const { locale, mode: _m, area: _a, ...input } = body; // eslint-disable-line @typescript-eslint/no-unused-vars
   const job: PendingJob = { id: d.id, input, locale, startedAt: Date.now() };
   sessionStorage.setItem(JOB_KEY, JSON.stringify(job));
   return job;

@@ -148,7 +148,9 @@ export async function runBusinessDecisions(provider: DecisionProvider, x: Decisi
   }
 
   // ---- V4: owner actions
-  const WEEK_OPTS = [...supported("TEST", TESTS), ...supported("OWN", OWN_EXTRA), ...supported("WEEK", ["CONTINUE_EXPERIMENT"])];
+  // One test at a time (code policy): while a test runs, the week is about protecting it or fixing an operational issue.
+  const running = supported("WEEK", ["CONTINUE_EXPERIMENT"]);
+  const WEEK_OPTS = running.length ? [...running, ...supported("OWN", OWN_EXTRA)] : [...supported("TEST", TESTS), ...supported("OWN", OWN_EXTRA)];
   qs.push({ id: "THIS_WEEK", ns: "WEEK", options: [...new Set(WEEK_OPTS)], question: "What is the ONE thing the owner should do this week? If an experiment is running, prefer protecting its measurement over starting something new." });
   const watchIds = [...new Set(ev.flatMap((e) => e.supports).filter((k) => k.startsWith("WATCH:@")).map((k) => k.slice(7)))];
   const watchSignals = [...new Set(ev.flatMap((e) => e.supports).filter((k) => k.startsWith("WATCH:SIGNAL_")).map((k) => k.slice(6)))];

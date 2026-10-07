@@ -12,6 +12,7 @@ import { ApifyPlacesProvider, BudgetSkipError, DemoPlacesProvider, type NearbyQu
 import { ProviderBudget, type ScanMode } from "@/services/ProviderBudgetService";
 import { ensureMentions } from "@/services/ReviewIntelligenceService";
 import { isLive, runRadar, type RadarProgress } from "@/lib/pipeline";
+import { cacheDelete } from "@/lib/cache";
 import { findRecord, mergeReviews, rememberPlace, saveRecord, storedReviews } from "@/services/continuous/RestaurantStore";
 import { buildSnapshot } from "@/services/continuous/SnapshotService";
 import { detectChanges, interpretation, topChanges, type MarketChange } from "@/services/continuous/MarketChangeService";
@@ -84,15 +85,31 @@ class MergingProvider implements PlacesProvider {
 }
 
 /** LIGHT_REFRESH / CACHE: serve the stored market, refreshing only cheap, change-sensitive signals. */
+interface RefreshPlan {
+  counts: boolean;                                    // ratings / review counts / hours of target + known competitors
+  targetNew: number;                                  // newest target reviews to fetch
+  newPlaces: "cheap" | "full" | "none";               // one-query search, full nearby scan, or nothing
+  competitorReviews: "moved" | "benchmarks" | "none"; // only competitors that moved, top benchmarks (deep dive), or none
+}
+const LIGHT: RefreshPlan = { counts: true, targetNew: CONFIG.reviewDepth.lightTargetNew, newPlaces: "cheap", competitorReviews: "moved" };
+const NONE_PLAN: RefreshPlan = { counts: false, targetNew: 0, newPlaces: "none", competitorReviews: "none" };
+/** Deep dive on ONE area: only that area is re-fetched (Part 24). */
+const AREA_PLAN: Record<DeepArea, RefreshPlan> = {
+  reviews: { counts: true, targetNew: CONFIG.reviewDepth.target, newPlaces: "none", competitorReviews: "benchmarks" },
+  competitors: { counts: true, targetNew: 0, newPlaces: "full", competitorReviews: "none" },
+  visibility: { counts: false, targetNew: 0, newPlaces: "none", competitorReviews: "none" },
+  menu: NONE_PLAN, instagram: NONE_PLAN, // sources not connected: nothing to fetch
+};
+
 class StoredProvider implements PlacesProvider {
-  constructor(private base: PlacesProvider, private rec: RestaurantRecord, private budget: ProviderBudget, private refresh: boolean) {}
+  constructor(private base: PlacesProvider, private rec: RestaurantRecord, private budget: ProviderBudget, private plan: RefreshPlan) {}
 
   async findRestaurant() {
     let t = this.rec.places[this.rec.targetId];
     let fresh: Review[] = [];
-    if (this.refresh && this.base.refreshPlaces) {
+    if ((this.plan.counts || this.plan.targetNew) && this.base.refreshPlaces) {
       try {
-        const [u] = await this.base.refreshPlaces([t], CONFIG.reviewDepth.lightTargetNew, 1);
+        const [u] = await this.base.refreshPlaces([t], this.plan.targetNew, 1);
         if (u) { t = { ...t, rating: u.rating, reviewCount: u.reviewCount, openingHours: u.openingHours ?? t.openingHours, weeklyHours: u.weeklyHours ?? t.weeklyHours, closed: u.closed }; fresh = u.reviews; }
       } catch (e) { if (!(e instanceof BudgetSkipError)) throw e; }
     }
@@ -101,7 +118,7 @@ class StoredProvider implements PlacesProvider {
 
   async findNearby(q: NearbyQuery): Promise<NearbyResult> {
     const places = new Map(Object.values(this.rec.places).filter((p) => p.id !== this.rec.targetId).map((p) => [p.id, { ...p }]));
-    if (this.refresh && this.base.refreshPlaces) {
+    if (this.plan.counts && this.base.refreshPlaces) {
       // Ratings, counts and hours of the known direct competitors: cheap and the most change-sensitive signal.
       const known = this.rec.confirmedIds.map((id) => places.get(id)).filter((p): p is Restaurant => !!p);
       try {
@@ -110,13 +127,18 @@ class StoredProvider implements PlacesProvider {
           if (p) places.set(u.id, { ...p, rating: u.rating, reviewCount: u.reviewCount, openingHours: u.openingHours ?? p.openingHours, weeklyHours: u.weeklyHours ?? p.weeklyHours, closed: u.closed });
         }
       } catch (e) { if (!(e instanceof BudgetSkipError)) throw e; }
-      // New places: ONE cheap search on the main cuisine query (optional, skipped if over budget).
-      const kw = q.keywords?.[0];
-      if (kw && this.base instanceof ApifyPlacesProvider) {
-        try {
-          for (const n of await this.base.findNewNearby(q.center, q.radiusM, kw)) if (!places.has(n.id) && n.id !== this.rec.targetId) places.set(n.id, n);
-        } catch (e) { if (!(e instanceof BudgetSkipError)) throw e; }
-      }
+    }
+    // New places: ONE cheap search on the main cuisine query (optional), or the full nearby scan on a deep dive.
+    const kw = q.keywords?.[0];
+    if (this.plan.newPlaces === "cheap" && kw && this.base instanceof ApifyPlacesProvider) {
+      try {
+        for (const n of await this.base.findNewNearby(q.center, q.radiusM, kw)) if (!places.has(n.id) && n.id !== this.rec.targetId) places.set(n.id, n);
+      } catch (e) { if (!(e instanceof BudgetSkipError)) throw e; }
+    }
+    if (this.plan.newPlaces === "full") {
+      const full = await this.base.findNearby(q, this.rec.targetId);
+      for (const n of full.places) places.set(n.id, { ...places.get(n.id), ...n });
+      return { places: [...places.values()], targetRanks: full.targetRanks };
     }
     return { places: [...places.values()], targetRanks: this.rec.places[this.rec.targetId]?.searchRanks ?? [] };
   }
@@ -125,14 +147,20 @@ class StoredProvider implements PlacesProvider {
     // Only competitors whose review count moved materially get their newest reviews; the rest reuse the store.
     const D = CONFIG.reviewDepth;
     const prev = this.rec.snapshots[this.rec.snapshots.length - 1];
-    const moved = rs.filter((r) => {
+    if (this.plan.competitorReviews === "benchmarks" && this.base.refreshPlaces) {
+      const strong = rs.slice(0, D.strongBenchmarkCount);
+      const fresh = new Map<string, Review[]>();
+      for (const u of await this.base.refreshPlaces(strong, D.strongBenchmark, 2)) fresh.set(u.id, u.reviews);
+      return rs.map((r) => withStored(this.rec, r, fresh.get(r.id) ?? [], this.budget));
+    }
+    const moved = this.plan.competitorReviews === "none" ? [] : rs.filter((r) => {
       const p = prev?.competitors.find((c) => c.id === r.id) ?? prev?.nearby.find((c) => c.id === r.id);
       if (!p) return false;
       const d = r.reviewCount - p.reviewCount;
       return d >= D.materialReviewDelta || d >= p.reviewCount * D.materialReviewPct;
     });
     const fresh = new Map<string, Review[]>();
-    if (this.refresh && moved.length && this.base.refreshPlaces) {
+    if (moved.length && this.base.refreshPlaces) {
       try { for (const u of await this.base.refreshPlaces(moved, D.lightCompetitorNew, 2)) fresh.set(u.id, u.reviews); } catch (e) { if (!(e instanceof BudgetSkipError)) throw e; }
     }
     return rs.map((r) => withStored(this.rec, r, fresh.get(r.id) ?? [], this.budget));
@@ -147,16 +175,22 @@ export async function runScan(input: RadarInput, locale: Locale, o: ScanOptions 
   let rec = findRecord({ ...input, demo });
   const isFirstScan = !rec;
   if (!rec && demo) rec = demoHistory(input, now); // fictional history so the demo shows changes and experiments
-  let mode = o.area ? "DEEP_SCAN" as const : resolveMode(o.mode ?? "auto", rec, now);
+  let mode = resolveMode(o.mode ?? "auto", rec, now);
   if (rec && !rec.places[rec.targetId] && mode !== "DEEP_SCAN") mode = "DEEP_SCAN"; // nothing stored to refresh
+  // A deep dive refreshes ONE area on top of the stored data; it is never a full rescan.
+  const area = rec?.places[rec.targetId] ? o.area : undefined;
+  if (area) mode = "DEEP_SCAN";
+  if (area === "visibility" && rec) { const site = rec.places[rec.targetId]?.website; if (site) cacheDelete(`site:${site}`); }
   const budget = new ProviderBudget(mode);
   const record: RestaurantRecord = rec ?? { id: "", name: input.name, input: { ...input, demo }, createdAt: new Date(now).toISOString(), places: {}, targetId: "", confirmedIds: [], reviews: {}, snapshots: [], timeline: [], experiments: [] };
   const previous = record.snapshots[record.snapshots.length - 1];
 
   const base: PlacesProvider = o.places ?? (demo ? new DemoPlacesProvider() : new ApifyPlacesProvider(undefined, undefined, budget, mode === "MONTHLY_REFRESH" ? 50 : CONFIG.reviewDepth.target));
-  const places: PlacesProvider = mode === "DEEP_SCAN" || mode === "MONTHLY_REFRESH"
-    ? new MergingProvider(base, record, budget)
-    : new StoredProvider(base, record, budget, mode === "LIGHT_REFRESH" && !demo);
+  const places: PlacesProvider = area
+    ? new StoredProvider(base, record, budget, demo ? NONE_PLAN : AREA_PLAN[area])
+    : mode === "DEEP_SCAN" || mode === "MONTHLY_REFRESH"
+      ? new MergingProvider(base, record, budget)
+      : new StoredProvider(base, record, budget, mode === "LIGHT_REFRESH" && !demo ? LIGHT : NONE_PLAN);
 
   let changes: MarketChange[] = [];
   const events: TimelineEvent[] = [];
@@ -196,7 +230,7 @@ export async function runScan(input: RadarInput, locale: Locale, o: ScanOptions 
     record.confirmedIds = result.competitors.map((c) => c.restaurant.id);
     record.id ||= result.target.id; record.targetId = result.target.id; record.name = result.target.name;
     record.lastRefreshAt = iso;
-    if (mode === "DEEP_SCAN") record.lastDeepAt = iso;
+    if (mode === "DEEP_SCAN" && !area) record.lastDeepAt = iso;
     if (mode === "MONTHLY_REFRESH") record.lastMonthlyAt = iso;
     if (isFirstScan && !demo) record.timeline.push({ at: iso, kind: "INITIAL_SCAN", code: "tl.initial" });
     else if (mode === "DEEP_SCAN" || mode === "MONTHLY_REFRESH") record.timeline.push({ at: iso, kind: "DEEP_SCAN", code: mode === "DEEP_SCAN" ? "tl.deep" : "tl.monthly" });
