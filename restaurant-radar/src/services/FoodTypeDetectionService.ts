@@ -173,3 +173,32 @@ export function occasionSimilarity(a?: FoodProfile, b?: FoodProfile): number {
   const inter = [...A].filter((x) => B.has(x)).length;
   return inter / (A.size + B.size - inter);
 }
+
+/** Regex that recognises the detected cuisine in free text (site audit, category check). */
+export function cuisineRegex(type: CuisineType): RegExp | null {
+  const own = RULES.find((r) => r.type === type)?.re;
+  const parent = PARENT[type] && RULES.find((r) => r.type === PARENT[type])?.re;
+  const rs = [own, parent].filter(Boolean) as RegExp[];
+  return rs.length ? new RegExp(rs.map((r) => r.source).join("|"), "i") : null;
+}
+
+const QUERY_WORD: Partial<Record<CuisineType, string>> = {
+  BURGER: "burger", SMASH_BURGER: "smash burger", GOURMET_BURGER: "burger gourmet", FRIED_CHICKEN: "fried chicken", CHICKEN: "poulet",
+  KEBAB: "kebab", TACOS_FR: "tacos", PIZZA: "pizzeria", SUSHI: "sushi", JAPANESE: "restaurant japonais", THAI: "restaurant thai",
+  VIETNAMESE: "restaurant vietnamien", INDIAN: "restaurant indien", PAKISTANI: "restaurant pakistanais", LEBANESE: "restaurant libanais",
+  MEDITERRANEAN: "restaurant méditerranéen", HEALTHY: "healthy", POKE: "poke bowl", BRUNCH: "brunch", BAKERY: "boulangerie",
+  DESSERT: "dessert", COFFEE: "coffee shop", FINE_DINING: "restaurant gastronomique", STREET_FOOD: "street food",
+};
+const MOD_WORD: Partial<Record<CuisineModifier, string>> = { HALAL: "halal", VEGAN: "vegan", VEGETARIAN: "végétarien" };
+
+/**
+ * Local search queries derived from the detected profile (max 3), e.g. "burger", "burger gourmet", "burger halal".
+ * Only built from MEDIUM/HIGH detections, so we never search irrelevant keywords. The area comes from the geolocation.
+ */
+export function searchQueries(p?: FoodProfile): string[] {
+  if (!p || p.level === "LOW") return [];
+  const base = QUERY_WORD[PARENT[p.primary] ?? p.primary];
+  const specific = PARENT[p.primary] ? QUERY_WORD[p.primary] : undefined;
+  const mod = p.modifiers.map((m) => MOD_WORD[m.key]).find(Boolean);
+  return [base, specific, base && mod ? `${base} ${mod}` : undefined].filter((x): x is string => !!x).slice(0, 3);
+}

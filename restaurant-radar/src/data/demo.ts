@@ -119,6 +119,7 @@ const SPECS: Spec[] = [
     open: "11:30", close: "22:00", seed: 11,
     description: "Burgers gourmet faits maison, viande halal, à emporter et en livraison.",
     attributes: ["Delivery", "Takeaway", "Halal food", "Dine-in"], imagesCount: 38, phone: "+33 4 00 00 00 00",
+    website: "https://example.org/maison-brasero",
     profile: {
       BURGER: { w: 0.3, neg: 0.06, neu: 0.03 },
       TASTE: { w: 0.12, neg: 0.08, neu: 0.05 },
@@ -289,6 +290,30 @@ export function buildDemoMarket(limits: { target: number; competitor: number }, 
   }));
   return {
     target: all.find((r) => r.id === TARGET_ID)!, nearby: all.filter((r) => r.id !== TARGET_ID), retrievedAt,
-    targetRanks: [{ query: "burger", rank: 4 }, { query: "fast food", rank: 11 }],
+    targetRanks: [{ query: "burger", rank: 4 }, { query: "burger gourmet", rank: 9 }],
+  };
+}
+
+// ---- V3 digital demo data (fictional, labelled demo in the UI) ------------------------------
+const day = 86_400_000;
+const posts = (n: number, every: number, likes: number, comments: number, nowMs: number) =>
+  Array.from({ length: n }, (_, i) => ({ date: new Date(nowMs - (i * every + 1) * day).toISOString(), likes: Math.round(likes * (0.8 + ((i * 37) % 40) / 100)), comments: Math.round(comments * (0.8 + ((i * 13) % 40) / 100)), isReel: i % 3 === 0 }));
+
+export function demoDigital(nowMs = Date.now()) {
+  return {
+    delivery: {
+      UBER_EATS: { platform: "UBER_EATS" as const, status: "CONNECTED" as const, rating: 4.1, ratingCountText: "500+", menuAvailable: true, updatedAt: new Date(nowMs).toISOString() },
+      DELIVEROO: { platform: "DELIVEROO" as const, status: "CONNECTED" as const, rating: 3.9, ratingCount: 640, menuAvailable: true, updatedAt: new Date(nowMs).toISOString() },
+    },
+    website: {
+      status: "CONNECTED" as const, url: "https://example.org/maison-brasero", title: "Maison Brasero - Burgers Marseille",
+      metaDescription: undefined, schemaTypes: [], schemaHours: false, schemaAddress: false,
+      textSample: "maison brasero burgers marseille commandez en ligne nos burgers 11h30 - 22h 14 rue sainte +33 4 00 00 00 00",
+      hasMenuText: false, instagramUrl: "https://instagram.com/maisonbrasero",
+    },
+    instagram: {
+      "Maison Brasero": { status: "CONNECTED" as const, username: "maisonbrasero", followers: 18000, following: 310, postCount: 412, bio: "Burgers gourmet à Marseille", website: "https://example.org/maison-brasero", recentPosts: posts(12, 6, 130, 6, nowMs) },
+      "Smash District": { status: "CONNECTED" as const, username: "smashdistrict", followers: 7000, following: 180, postCount: 640, bio: "Smash burgers, open late", website: "https://example.org/smash-district", recentPosts: posts(12, 3, 210, 14, nowMs) },
+    },
   };
 }

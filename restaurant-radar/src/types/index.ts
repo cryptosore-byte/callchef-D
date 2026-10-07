@@ -319,4 +319,5 @@ export interface RadarResult {
   targetReputation?: Reputation;
   competitorCards?: Record<string, import("@/services/CompetitorInsightService").CompetitorCard>;
   roles?: import("@/services/CompetitorInsightService").CompetitorRoles;
+  digital?: import("@/services/DigitalHealthRunner").DigitalHealth;
 }

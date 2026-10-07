@@ -13,7 +13,8 @@ import { computeDataQuality, computeMarketFeatures } from "@/services/MarketFeat
 import { computeRadarScore } from "@/services/RadarScoreService";
 import { runJevDecisions, type DecisionContext } from "@/services/JevDecisionService";
 import { buildPlan, runBattle } from "@/services/BattleModeService";
-import { withFoodProfile } from "@/services/FoodTypeDetectionService";
+import { searchQueries, withFoodProfile } from "@/services/FoodTypeDetectionService";
+import { runDigitalHealth, sourcesFor, type DigitalSources } from "@/services/DigitalHealthRunner";
 
 export class NotConfiguredError extends Error {}
 
@@ -38,7 +39,7 @@ export interface RadarProgress { stage: Stage; partial: RadarPartial; }
 const slim = (r: Restaurant): Restaurant => ({ ...r, reviews: [] });
 
 /** Single entry point. Demo mode needs no keys. `onProgress` fires when each stage starts, with the data known so far. */
-export async function runRadar(input: RadarInput, locale: Locale = "en", opts: { decider?: DecisionProvider; onProgress?: (p: RadarProgress) => void } = {}): Promise<RadarResult> {
+export async function runRadar(input: RadarInput, locale: Locale = "en", opts: { decider?: DecisionProvider; onProgress?: (p: RadarProgress) => void; digitalSources?: DigitalSources } = {}): Promise<RadarResult> {
   const t = makeT(locale);
   const demo = input.demo || !isLive();
   const places: PlacesProvider = demo ? new DemoPlacesProvider() : new ApifyPlacesProvider();
@@ -54,9 +55,10 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
   const target = withFoodProfile(found);
   partial.target = slim(target);
   emit("nearby");
-  const nearbyRes = await places.findNearby({ center: target, radiusM: input.radiusM, maxResults: CONFIG.limits.maxNearbyRestaurants, keywords: competitorKeywords(target.primaryFoodType, target.format) }, target.id);
+  const nearbyRes = await places.findNearby({ center: target, radiusM: input.radiusM, maxResults: CONFIG.limits.maxNearbyRestaurants, keywords: competitorKeywords(target.primaryFoodType, target.format, searchQueries(target.foodProfile)) }, target.id);
   const nearbyRaw = nearbyRes.places.slice(0, CONFIG.limits.maxNearbyRestaurants).map(withFoodProfile);
-  if (nearbyRes.targetRanks.length) target.searchRanks = nearbyRes.targetRanks;
+  // Ranks are only meaningful when the provider exposes them for the places it returned.
+  if (nearbyRes.targetRanks.length || nearbyRaw.some((r) => r.searchRanks?.length)) target.searchRanks = nearbyRes.targetRanks;
 
   const nearby: CompetitorCandidate[] = scoreCandidates(target, nearbyRaw, input.radiusM);
   partial.nearbyCount = nearby.length;
@@ -103,10 +105,12 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
     dataQuality: dataQuality.level, t,
   };
   emit("decisions");
-  // Decisions and battles are independent: run them together.
-  const [decisions, battleList] = await Promise.all([
+  // Decisions, battles and the digital sources are independent: run them together.
+  const position = radarScore.dimensions.find((d) => d.key === "position")!.score;
+  const [decisions, battleList, digital] = await Promise.all([
     runJevDecisions(decider, ctx),
     Promise.all(competitors.map((c) => runBattle(t, decider, target, summaries[target.id], c, summaries[c.restaurant.id], dataQuality.level))),
+    runDigitalHealth(target, targetRep, competitors, position, opts.digitalSources ?? sourcesFor(demo)),
   ]);
   if (!decisions.available && decisions.unavailableReason) warnings.push(decisions.unavailableReason);
 
@@ -118,6 +122,6 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
     id: demo ? "demo" : target.id, demo, locale, input, target, nearby, competitors, summaries, market, decisions,
     radarScore, battles, plan, dataQuality,
     sources: [target.source], generatedAt: new Date().toISOString(), warnings,
-    targetReputation: targetRep, competitorCards, roles,
+    targetReputation: targetRep, competitorCards, roles, digital,
   };
 }

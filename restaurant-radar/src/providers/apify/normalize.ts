@@ -191,7 +191,9 @@ export function nameSimilarity(a: string, b: string): number {
 }
 
 /** Search terms used to find restaurants that compete with this one (same cuisine / same format). */
-export function competitorKeywords(food: FoodType, format: RestaurantFormat): string[] {
+export function competitorKeywords(food: FoodType, format: RestaurantFormat, profileQueries: string[] = []): string[] {
+  // V3: queries from the detected profile ("burger", "burger gourmet", "burger halal") double as local search tests.
+  if (profileQueries.length) return profileQueries;
   const byFood: Partial<Record<FoodType, string>> = {
     burger: "burger", pizza: "pizzeria", sushi: "sushi", kebab: "kebab", fried_chicken: "fried chicken", tacos: "tacos",
     asian_street: "asian food", bakery: "boulangerie", coffee: "coffee shop", dessert: "dessert",

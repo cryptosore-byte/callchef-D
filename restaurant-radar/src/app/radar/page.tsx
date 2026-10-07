@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { DecisionPanel } from "@/components/DecisionPanel";
+import { DigitalHealth } from "@/components/DigitalHealth";
 import { Plan } from "@/components/Plan";
 import { RadarChart } from "@/components/RadarChart";
 import { ReviewIntel } from "@/components/ReviewIntel";
@@ -66,6 +67,7 @@ export default function RadarPage() {
       <DecisionPanel r={r} />
       <ReviewIntel r={r} />
       <WarRoom r={r} />
+      <DigitalHealth r={r} />
 
       <section aria-labelledby="plan">
         <h2 id="plan" className="font-display text-2xl font-bold md:text-3xl">{t("radar.planTitle")}</h2>

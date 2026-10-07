@@ -4,7 +4,9 @@ import type { Reason } from "@/types";
 /** Localized decimal (4.6 -> "4,6" in French). Integers stay as they are. */
 export const num = (v: string | number, locale: string) => {
   const n = typeof v === "number" ? v : Number(v);
-  return isFinite(n) && !Number.isInteger(n) ? n.toLocaleString(locale, { maximumFractionDigits: 2 }) : String(v);
+  if (!isFinite(n) || (typeof v === "string" && v.trim() === "")) return String(v);
+  if (!Number.isInteger(n)) return n.toLocaleString(locale, { maximumFractionDigits: 2 });
+  return Math.abs(n) >= 1000 ? n.toLocaleString(locale) : String(v);
 };
 
 /** Star rating with one decimal: 5 -> "5.0" / "5,0". */

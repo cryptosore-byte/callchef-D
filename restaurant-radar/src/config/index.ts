@@ -29,6 +29,9 @@ export const CONFIG = {
   benchmarkWeights: { similarity: 0.4, volume: 0.4, reputation: 0.2 },
   benchmarkLevels: { strong: 70, strongMinReviews: 100, strongMinSimilarity: 0.6, medium: 50, mediumMinReviews: 30, mediumMinSimilarity: 0.45 },
   benchmarkVolumeRef: 500, // review count treated as "fully established"
+
+  // Social Power Score weights (sum = 1). Follower count is deliberately a minor input.
+  socialWeights: { engagement: 0.3, consistency: 0.2, audience: 0.15, freshness: 0.15, profile: 0.1, performance: 0.1 },
   prefilterTopN: 8, // candidates sent to Jev for the yes/no decision
 
   // Cost control (env-overridable)

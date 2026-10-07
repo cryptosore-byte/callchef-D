@@ -3,6 +3,8 @@ import type { Restaurant } from "../src/types";
 import { detectFoodType, withFoodProfile } from "../src/services/FoodTypeDetectionService";
 import { adjustedRating } from "../src/services/ReputationService";
 import { scoreCandidates } from "../src/services/CompetitorDetectionService";
+import { auditHtml, localSearchFrom } from "../src/providers/DigitalProviders";
+import { aiSection, reputationSection, socialSection, visibilitySection } from "../src/services/DigitalHealthService";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => { console.log(c ? "PASS" : "FAIL", m); if (!c) fails++; };
@@ -55,6 +57,27 @@ const rev = (texts: string[]) => texts.map((text, i) => ({ id: `r${i}`, text, ra
   // ---- unknown price is neutral, never a claim
   const noPrice = scoreCandidates({ ...target, priceKnown: false }, [french], 2000)[0];
   ok(!noPrice.breakdown.priceKnown && noPrice.breakdown.price === 0.5 && !noPrice.threatReasons.some((r) => r.code === "samePrice"), "unknown price -> neutral 0.5, no price reason");
+
+  // ---- digital health: NO DATA = NO CLAIM
+  const rep = reputationSection(target, 4.45, [{ platform: "GOOGLE", status: "CONNECTED", rating: 4.5, ratingCount: 519 }, { platform: "UBER_EATS", status: "NOT_CONNECTED" }, { platform: "DELIVEROO", status: "NOT_CONNECTED" }]);
+  ok(rep.deliveryScore === null && rep.deliveryAverage === null && !["rep.deliveryGap", "rep.deliveryStronger"].includes(rep.insight?.code ?? ""), "delivery not connected -> no delivery score, no delivery claim");
+  ok(rep.score !== null, `reputation still scored from Google alone (${rep.score})`);
+  const repGap = reputationSection(target, 4.6, [{ platform: "GOOGLE", status: "CONNECTED", rating: 4.7, ratingCount: 519 }, { platform: "UBER_EATS", status: "CONNECTED", rating: 4.0 }, { platform: "DELIVEROO", status: "CONNECTED", rating: 4.0 }]);
+  ok(repGap.insight?.code === "rep.deliveryGap", "Google 4.7 vs delivery 4.0 -> delivery gap insight");
+  const soc = socialSection({ status: "NOT_CONNECTED" }, []);
+  ok(soc.score === null && !soc.insight, "Instagram not connected -> no Social score");
+  ok(localSearchFrom({ ...target, searchRanks: undefined }, ["burger"], 15).status === "NOT_CONNECTED", "no rank data -> local search not measured (no fake ranking)");
+  const ls = localSearchFrom({ ...target, searchRanks: [{ query: "burger", rank: 3 }] }, ["burger", "burger halal"], 15);
+  ok(ls.results[1].rank === null && ls.topN === 15, "absent query reported as 'not in top 15', not as a rank");
+  const noSite = aiSection({ ...target, website: undefined }, /burger/i, ["HALAL"], { status: "NOT_FOUND", schemaTypes: [], schemaHours: false, schemaAddress: false, textSample: "", hasMenuText: false }, false);
+  ok(noSite.insight?.code === "ai.noSite" && noSite.checks.find((c) => c.key === "ai.schema")?.status === "MISSING", "no website -> stated as missing");
+  const unreadable = aiSection({ ...target, website: "https://x.test" }, /burger/i, [], { status: "ERROR", schemaTypes: [], schemaHours: false, schemaAddress: false, textSample: "", hasMenuText: false }, false);
+  ok(unreadable.checks.find((c) => c.key === "ai.schema")?.status === "UNKNOWN" && unreadable.insight?.code === "ai.unreadable", "unreadable site -> not measured, not 'missing'");
+  const html = `<html><head><title>Barlou</title><meta name="description" content="Burgers halal"><script type="application/ld+json">{"@type":"Restaurant","servesCuisine":"Burgers","telephone":"+33 4 91 00 00 00","openingHours":"Mo-Su 11:00-23:00","address":{"streetAddress":"x"}}</script></head><body>Barlou Burger - Notre carte : Classic 12,50 € - halal</body></html>`;
+  const au = auditHtml("https://barlou.test", html);
+  ok(au.schemaTypes.includes("Restaurant") && au.schemaHours && au.hasMenuText && au.schemaCuisine === "Burgers", "website audit parses JSON-LD, hours and a text menu");
+  const vis = visibilitySection({ ...target, imagesCount: undefined }, true, ls, au);
+  ok(vis.checks.find((c) => c.key === "vis.photos")?.status === "UNKNOWN", "unknown photo count is excluded, not scored as zero");
 
   console.log(fails ? `${fails} FAILED` : "all passed");
   process.exit(fails ? 1 : 0);
