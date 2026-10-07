@@ -71,13 +71,23 @@ const themes = (s?: ReviewSummary) =>
   }));
 
 export const placeState = (r: Restaurant, s?: ReviewSummary, extra: Record<string, unknown> = {}) => ({
-  name: r.name, cuisine: r.primaryFoodType, format: r.format, rating: r.rating, review_count: r.reviewCount,
-  price_level_1_to_4: r.priceLevel, opens_at: r.openingHours?.open ?? null, closes_at: r.openingHours?.close ?? null,
+  name: r.name,
+  // detected cuisine; null when detection confidence is LOW (unknown, not "other")
+  cuisine: r.foodProfile ? (r.foodProfile.level === "LOW" ? null : r.foodProfile.primary) : r.primaryFoodType,
+  cuisine_confidence: r.foodProfile?.level ?? null,
+  positioning: r.foodProfile?.modifiers.map((m) => m.key) ?? [],
+  format: r.format, rating: r.rating, review_count: r.reviewCount,
+  price_level_1_to_4: r.priceKnown === false ? null : r.priceLevel,
+  opens_at: r.openingHours?.open ?? null, closes_at: r.openingHours?.close ?? null,
   reviews_analyzed: s?.reviewsAnalyzed ?? 0, themes: themes(s), ...extra,
 });
 
 export function competitorState(c: Competitor, s?: ReviewSummary) {
-  return placeState(c.restaurant, s, { distance_m: Math.round(c.distanceM), relevance_0_100: Math.round(c.relevance), threat_score_0_100: Math.round(c.threatScore) });
+  return placeState(c.restaurant, s, {
+    distance_m: Math.round(c.distanceM), relevance_0_100: Math.round(c.relevance), threat_score_0_100: Math.round(c.threatScore),
+    adjusted_rating: c.reputation.adjustedRating, reputation_confidence: c.reputation.reputationConfidence,
+    threat_level: c.threatLevel, benchmark_quality: c.benchmarkLevel,
+  });
 }
 
 export const STATE_NOTE = "All percentages are shares of the available public-review sample, not of all customers. Missing data means unknown, not zero.";

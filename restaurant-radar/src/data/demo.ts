@@ -104,6 +104,9 @@ interface Spec {
   categories: string[]; food: FoodType; format: RestaurantFormat;
   rating: number; reviewCount: number; price: 1 | 2 | 3 | 4;
   open: string; close: string; profile?: Profile; seed: number;
+  // V3 observable fields (fictional)
+  weekendClose?: string; description?: string; attributes?: string[]; imagesCount?: number;
+  phone?: string; website?: string; menuUrl?: string; priceKnown?: boolean;
 }
 
 const TARGET_ID = "demo-target";
@@ -114,6 +117,8 @@ const SPECS: Spec[] = [
     lat: 43.2951, lon: 5.3745, categories: ["Burger restaurant", "Fast food", "Delivery"],
     food: "burger", format: "fast_food", rating: 4.4, reviewCount: 612, price: 2,
     open: "11:30", close: "22:00", seed: 11,
+    description: "Burgers gourmet faits maison, viande halal, à emporter et en livraison.",
+    attributes: ["Delivery", "Takeaway", "Halal food", "Dine-in"], imagesCount: 38, phone: "+33 4 00 00 00 00",
     profile: {
       BURGER: { w: 0.3, neg: 0.06, neu: 0.03 },
       TASTE: { w: 0.12, neg: 0.08, neu: 0.05 },
@@ -132,6 +137,8 @@ const SPECS: Spec[] = [
     lat: 43.2938, lon: 5.3799, categories: ["Burger restaurant", "Smash burger", "Late-night food"],
     food: "burger", format: "fast_food", rating: 4.5, reviewCount: 1284, price: 2,
     open: "11:30", close: "02:00", seed: 21,
+    description: "Smash burgers et frites maison, ouvert tard.", attributes: ["Delivery", "Takeaway", "Late-night food"], imagesCount: 420,
+    phone: "+33 4 00 00 00 01", website: "https://example.org/smash-district",
     profile: {
       BURGER: { w: 0.3, neg: 0.08, neu: 0.05 }, TASTE: { w: 0.12, neg: 0.08, neu: 0.05 },
       FRIES: { w: 0.12, neg: 0.2, neu: 0.1 }, PACKAGING: { w: 0.07, neg: 0.2, neu: 0.1 },
@@ -186,6 +193,13 @@ const SPECS: Spec[] = [
       PRICE: { w: 0.15, neg: 0.05, neu: 0.1 }, WAITING_TIME: { w: 0.15, neg: 0.4, neu: 0.1 },
       SERVICE: { w: 0.1, neg: 0.4, neu: 0.1 }, CLEANLINESS: { w: 0.1, neg: 0.4, neu: 0.1 },
     },
+  },
+  {
+    id: "demo-c6", name: "Smash Corner", address: "6 rue Glandevès, 13001 Marseille",
+    lat: 43.2940, lon: 5.3760, categories: ["Hamburger restaurant"], food: "burger", format: "fast_food",
+    rating: 5.0, reviewCount: 12, price: 2, open: "11:30", close: "23:00", weekendClose: "00:00", seed: 81,
+    description: "Nouveau smash burger, halal.", attributes: ["Takeaway", "Delivery", "Halal food"], imagesCount: 9,
+    profile: { BURGER: { w: 0.5, neg: 0, neu: 0.1 }, TASTE: { w: 0.3, neg: 0, neu: 0.1 }, SERVICE: { w: 0.2, neg: 0, neu: 0.1 } },
   },
   { id: "demo-n1", name: "Pizzeria Cacao", address: "5 place Thiars, 13001 Marseille", lat: 43.2932, lon: 5.3712, categories: ["Pizza restaurant"], food: "pizza", format: "casual_dining", rating: 4.3, reviewCount: 905, price: 2, open: "12:00", close: "23:30", seed: 71 },
   { id: "demo-n2", name: "Sushi Nami", address: "17 rue Saint-Saëns, 13001 Marseille", lat: 43.2941, lon: 5.3737, categories: ["Sushi restaurant"], food: "sushi", format: "casual_dining", rating: 4.1, reviewCount: 366, price: 3, open: "12:00", close: "22:00", seed: 72 },
@@ -256,6 +270,7 @@ export interface DemoMarket {
   target: Restaurant;
   nearby: Restaurant[];
   retrievedAt: string;
+  targetRanks?: { query: string; rank: number }[];
 }
 
 export function buildDemoMarket(limits: { target: number; competitor: number }, nowMs = Date.now()): DemoMarket {
@@ -265,8 +280,15 @@ export function buildDemoMarket(limits: { target: number; competitor: number }, 
     categories: s.categories, primaryFoodType: s.food, format: s.format,
     rating: s.rating, reviewCount: s.reviewCount, priceLevel: s.price,
     openingHours: { open: s.open, close: s.close },
+    weeklyHours: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, open: s.open, close: day >= 4 && day <= 5 && s.weekendClose ? s.weekendClose : s.close })),
     source: { provider: "demo", retrievedAt, attribution: "Fictional demo data" },
-    reviews: genReviews(s, s.id === TARGET_ID ? limits.target : limits.competitor, nowMs),
+    reviews: genReviews(s, Math.min(s.reviewCount, s.id === TARGET_ID ? limits.target : limits.competitor), nowMs),
+    priceKnown: s.priceKnown ?? true,
+    description: s.description, attributes: s.attributes, imagesCount: s.imagesCount,
+    phone: s.phone, website: s.website, menuUrl: s.menuUrl,
   }));
-  return { target: all.find((r) => r.id === TARGET_ID)!, nearby: all.filter((r) => r.id !== TARGET_ID), retrievedAt };
+  return {
+    target: all.find((r) => r.id === TARGET_ID)!, nearby: all.filter((r) => r.id !== TARGET_ID), retrievedAt,
+    targetRanks: [{ query: "burger", rank: 4 }, { query: "fast food", rank: 11 }],
+  };
 }

@@ -5,11 +5,30 @@ const num = (v: string | undefined, d: number) => (v && !isNaN(Number(v)) ? Numb
 export const CONFIG = {
   radiusOptionsM: [500, 1000, 2000, 3000],
 
-  // Competitor Relevance Score weights (sum = 1). Edit here only.
+  // Competitor Relevance Score V2 weights (sum = 1). Edit here only.
   relevanceWeights: {
-    foodType: 0.35, proximity: 0.25, price: 0.15,
-    reputation: 0.10, hours: 0.10, format: 0.05,
+    foodType: 0.30, occasion: 0.15, proximity: 0.15, price: 0.10,
+    reviewVolume: 0.10, hours: 0.10, format: 0.10,
   },
+
+  // Food type detection: confidence thresholds for HIGH / MEDIUM (below = LOW, shown as uncertain)
+  foodType: { high: 0.75, medium: 0.5 },
+
+  // Bayesian rating smoothing: adjusted = v/(v+m)*R + m/(v+m)*C
+  // R raw rating, v review count, C local market average, m = reviews needed before a rating "counts" as much as the market prior.
+  reputation: {
+    bayesM: 50,
+    // reputationConfidence by review count
+    highMinReviews: 200, mediumMinReviews: 50,
+  },
+
+  // Threat potential = likelihood of capturing the same customers (0-100). Review volume is NOT an input.
+  threatWeights: { foodType: 0.35, proximity: 0.2, occasion: 0.15, hours: 0.1, price: 0.1, momentum: 0.1 },
+  threatLevels: { high: 70, medium: 50 },
+  // Benchmark quality = how reliably we can learn from this place (0-100). Review volume IS central.
+  benchmarkWeights: { similarity: 0.4, volume: 0.4, reputation: 0.2 },
+  benchmarkLevels: { strong: 70, strongMinReviews: 100, strongMinSimilarity: 0.6, medium: 50, mediumMinReviews: 30, mediumMinSimilarity: 0.45 },
+  benchmarkVolumeRef: 500, // review count treated as "fully established"
   prefilterTopN: 8, // candidates sent to Jev for the yes/no decision
 
   // Cost control (env-overridable)

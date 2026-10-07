@@ -8,9 +8,15 @@ import { isFoodPlace, nameSimilarity, normalizePlace } from "./apify/normalize";
 export interface PlacesSearchQuery { name: string; address: string; }
 export interface NearbyQuery { center: { latitude: number; longitude: number }; radiusM: number; maxResults: number; keywords?: string[]; }
 
+export interface NearbyResult {
+  places: Restaurant[];
+  /** Where the target itself appeared in the nearby searches (Google Maps order), when the provider exposes ranks. */
+  targetRanks: { query: string; rank: number }[];
+}
+
 export interface PlacesProvider {
   findRestaurant(q: PlacesSearchQuery): Promise<Restaurant | null>;
-  findNearby(q: NearbyQuery, excludeId: string): Promise<Restaurant[]>;
+  findNearby(q: NearbyQuery, excludeId: string): Promise<NearbyResult>;
   /** Attach reviews to the given restaurants (called only for confirmed competitors). */
   enrichWithReviews(rs: Restaurant[], maxPerRestaurant: number): Promise<Restaurant[]>;
 }
@@ -75,18 +81,21 @@ export class ApifyPlacesProvider implements PlacesProvider {
     return best.p;
   }
 
-  async findNearby(q: NearbyQuery, excludeId: string): Promise<Restaurant[]> {
+  async findNearby(q: NearbyQuery, excludeId: string): Promise<NearbyResult> {
     const now = new Date().toISOString();
     const items = await this.run(nearbyInput(q.center, q.radiusM, q.maxResults, q.keywords ?? []));
-    const seen = new Set<string>([excludeId]);
-    const out: Restaurant[] = [];
+    const byId = new Map<string, Restaurant>();
+    const targetRanks: NearbyResult["targetRanks"] = [];
     for (const i of items) {
-      if (i.permanentlyClosed || i.temporarilyClosed) continue;
       const r = normalizePlace(i, now, 0);
-      if (!r || seen.has(r.id) || !isFoodPlace(r.categories)) continue;
-      seen.add(r.id); out.push(r);
+      if (!r) continue;
+      if (r.id === excludeId) { targetRanks.push(...(r.searchRanks ?? [])); continue; }
+      if (i.permanentlyClosed || i.temporarilyClosed || !isFoodPlace(r.categories)) continue;
+      const prev = byId.get(r.id);
+      if (prev) { prev.searchRanks = [...(prev.searchRanks ?? []), ...(r.searchRanks ?? [])]; continue; } // same place found by several searches
+      byId.set(r.id, r);
     }
-    return out.slice(0, q.maxResults);
+    return { places: [...byId.values()].slice(0, q.maxResults), targetRanks };
   }
 
   async enrichWithReviews(rs: Restaurant[], max: number): Promise<Restaurant[]> {
@@ -109,6 +118,6 @@ export class ApifyPlacesProvider implements PlacesProvider {
 export class DemoPlacesProvider implements PlacesProvider {
   private market = buildDemoMarket({ target: CONFIG.limits.maxReviewsTarget, competitor: CONFIG.limits.maxReviewsPerCompetitor });
   async findRestaurant() { return this.market.target; }
-  async findNearby() { return this.market.nearby; }
+  async findNearby(): Promise<NearbyResult> { return { places: this.market.nearby, targetRanks: this.market.targetRanks ?? [] }; }
   async enrichWithReviews(rs: Restaurant[]) { return rs; } // demo reviews are already attached
 }

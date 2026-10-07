@@ -1,5 +1,5 @@
 // ALL actor-specific OUTPUT parsing lives here. The rest of the app only sees our own Restaurant type.
-import type { FoodType, OpeningHours, Restaurant, RestaurantFormat, Review } from "@/types";
+import type { DayHours, FoodType, OpeningHours, Restaurant, RestaurantFormat, Review } from "@/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Raw = Record<string, any>;
@@ -93,6 +93,39 @@ export function openingHoursFrom(raw: unknown): OpeningHours | undefined {
   return [...counts.values()].sort((a, b) => b.n - a.n)[0]?.h;
 }
 
+const DAYS: Record<string, number> = {
+  monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6,
+  lundi: 0, mardi: 1, mercredi: 2, jeudi: 3, vendredi: 4, samedi: 5, dimanche: 6,
+};
+/** Per-day hours, so weekend closing times can be compared. Closed days are omitted. */
+export function weeklyHoursFrom(raw: unknown): DayHours[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: DayHours[] = [];
+  for (const e of raw) {
+    const day = DAYS[(str((e as Raw)?.day) ?? "").toLowerCase()];
+    const text = str((e as Raw)?.hours);
+    const h = day !== undefined && text ? parseHoursRange(text) : null;
+    if (h && day !== undefined) out.push({ day, ...h });
+  }
+  return out.length ? out.sort((a, b) => a.day - b.day) : undefined;
+}
+
+/** True flags of Google's "additional info" block: { "Offerings": [{ "Halal food": true }], ... }. */
+export function attributesFrom(raw: unknown): string[] | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: string[] = [];
+  for (const group of Object.values(raw as Raw)) {
+    if (!Array.isArray(group)) continue;
+    for (const item of group) if (item && typeof item === "object") for (const [k, v] of Object.entries(item)) if (v === true) out.push(k);
+  }
+  return out.length ? out : undefined;
+}
+
+const hasPrice = (raw: Raw) => {
+  const p = raw.price ?? raw.priceLevel;
+  return (typeof p === "number" && p >= 1 && p <= 4) || !!(str(p) && /[€$£]|\d/.test(str(p)!));
+};
+
 // ---- reviews ----------------------------------------------------------------
 export function normalizeReviews(raw: unknown, restaurantId: string, max: number, nowIso: string): Review[] {
   if (!Array.isArray(raw)) return [];
@@ -138,6 +171,14 @@ export function normalizePlace(raw: Raw, retrievedAt: string, maxReviews = 0): R
     priceLevel, openingHours: openingHoursFrom(raw.openingHours), website: str(raw.website),
     source: { provider: "apify:google-maps", retrievedAt, url: str(raw.url), attribution: "Google Maps (via Apify)" },
     reviews,
+    priceKnown: hasPrice(raw),
+    description: str(raw.description),
+    attributes: attributesFrom(raw.additionalInfo),
+    phone: str(raw.phone) ?? str(raw.phoneUnformatted),
+    menuUrl: str(raw.menu) ?? str(raw.menuUrl),
+    imagesCount: num(raw.imagesCount),
+    weeklyHours: weeklyHoursFrom(raw.openingHours),
+    searchRanks: str(raw.searchString) && num(raw.rank) ? [{ query: str(raw.searchString)!, rank: num(raw.rank)! }] : undefined,
   };
 }
 

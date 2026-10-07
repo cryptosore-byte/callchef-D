@@ -12,6 +12,7 @@ import { computeDataQuality, computeMarketFeatures } from "@/services/MarketFeat
 import { computeRadarScore } from "@/services/RadarScoreService";
 import { runJevDecisions, type DecisionContext } from "@/services/JevDecisionService";
 import { buildPlan, runBattle } from "@/services/BattleModeService";
+import { withFoodProfile } from "@/services/FoodTypeDetectionService";
 
 export class NotConfiguredError extends Error {}
 
@@ -47,12 +48,14 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
   const emit = (stage: Stage) => { try { opts.onProgress?.({ stage, partial: { ...partial } }); } catch { /* progress is best-effort */ } };
 
   emit("find");
-  const target = await places.findRestaurant({ name: input.name, address: input.address });
-  if (!target) throw new NotConfiguredError(t("warn.notFound"));
+  const found = await places.findRestaurant({ name: input.name, address: input.address });
+  if (!found) throw new NotConfiguredError(t("warn.notFound"));
+  const target = withFoodProfile(found);
   partial.target = slim(target);
   emit("nearby");
-  const nearbyRaw = (await places.findNearby({ center: target, radiusM: input.radiusM, maxResults: CONFIG.limits.maxNearbyRestaurants, keywords: competitorKeywords(target.primaryFoodType, target.format) }, target.id))
-    .slice(0, CONFIG.limits.maxNearbyRestaurants);
+  const nearbyRes = await places.findNearby({ center: target, radiusM: input.radiusM, maxResults: CONFIG.limits.maxNearbyRestaurants, keywords: competitorKeywords(target.primaryFoodType, target.format) }, target.id);
+  const nearbyRaw = nearbyRes.places.slice(0, CONFIG.limits.maxNearbyRestaurants).map(withFoodProfile);
+  if (nearbyRes.targetRanks.length) target.searchRanks = nearbyRes.targetRanks;
 
   const nearby: CompetitorCandidate[] = scoreCandidates(target, nearbyRaw, input.radiusM);
   partial.nearbyCount = nearby.length;
@@ -64,7 +67,7 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: {
     if (!(e instanceof JevError)) throw e;
     // Jev unavailable: keep market data. Competitors are the deterministic top candidates, flagged as unconfirmed.
     warnings.push(t("warn.jevCompetitors"));
-    confirmed0 = nearby.slice(0, CONFIG.limits.maxCompetitorsAnalyzed).map((c) => ({ ...c, competitorProbability: c.relevance / 100, competitorConfidence: 0, threatScore: 0 }));
+    confirmed0 = nearby.slice(0, CONFIG.limits.maxCompetitorsAnalyzed).map((c) => ({ ...c, competitorProbability: c.relevance / 100, competitorConfidence: 0, threatScore: c.threatPotential }));
   }
 
   partial.competitors = confirmed0.map((c) => ({ restaurant: slim(c.restaurant), distanceM: c.distanceM, competitorProbability: c.competitorProbability, competitorConfidence: c.competitorConfidence }));
