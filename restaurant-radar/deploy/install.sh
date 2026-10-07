@@ -9,6 +9,8 @@ tmp="$(mktemp -d)"
 curl -fsSL "https://codeload.github.com/cryptosore-byte/callchef-D/tar.gz/refs/heads/$BRANCH" | tar -xz -C "$tmp"
 mkdir -p "$DIR"
 [ -f "$DIR/.env.local" ] && cp "$DIR/.env.local" "$tmp/env.keep"
+# Replace the code entirely so files removed upstream do not linger (keeps .env.local, .data, node_modules).
+rm -rf "$DIR/src" "$DIR/scripts" "$DIR/deploy" "$DIR/.next"
 cp -a "$tmp"/*/restaurant-radar/. "$DIR"/
 [ -f "$tmp/env.keep" ] && cp "$tmp/env.keep" "$DIR/.env.local"
 rm -rf "$tmp"
