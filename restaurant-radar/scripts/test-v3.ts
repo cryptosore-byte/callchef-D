@@ -1,4 +1,5 @@
 // V3 intelligence checks: food type, Bayesian reputation, threat vs benchmark. Fictional fixtures modelled on the Barlou case.
+import "./_isolated-store";
 import type { Restaurant } from "../src/types";
 import { detectFoodType, withFoodProfile } from "../src/services/FoodTypeDetectionService";
 import { adjustedRating } from "../src/services/ReputationService";
