@@ -143,6 +143,7 @@ export const fr: Record<string, string> = {
 
   "err.not_found": "Nous n'avons pas trouvé ce restaurant. Vérifiez le nom et ajoutez la ville ou la rue.",
   "err.rate_limit": "Le fournisseur de données nous limite pour le moment. Réessayez dans une minute.",
+  "err.detail": "détail",
   "err.actor_failed": "Le fournisseur de données publiques n'a pas renvoyé de résultats. Réessayez dans un instant.",
   "err.timeout": "La collecte des données a pris trop de temps. Essayez un rayon plus petit.",
   "err.network": "Impossible de joindre le fournisseur de données. Veuillez réessayer.",

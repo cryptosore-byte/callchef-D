@@ -153,6 +153,7 @@ export const en: Record<string, string> = {
 
   "err.not_found": "We couldn't find this restaurant. Check the name and add the city or street.",
   "err.rate_limit": "The data provider is rate-limiting us right now. Please try again in a minute.",
+  "err.detail": "detail",
   "err.actor_failed": "The public data provider failed to return results. Please try again shortly.",
   "err.timeout": "The data collection took too long. Try a smaller radius.",
   "err.network": "We couldn't reach the data provider. Please try again.",

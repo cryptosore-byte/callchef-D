@@ -32,6 +32,7 @@ export class ApifyError extends Error {
   constructor(public code: ApifyErrorCode, detail?: string) { super(detail ? `${code}: ${detail}` : code); }
 }
 
+const RETRY_DELAY_MS = Number(process.env.APIFY_RETRY_DELAY_MS ?? 3000);
 const RUN_TIMEOUT_MS = 110_000; // Apify's run-sync endpoint allows up to 300 s
 const MIN_NAME_SIMILARITY = 0.3;
 
@@ -60,20 +61,25 @@ export class ApifyPlacesProvider implements PlacesProvider {
     if (this.budget && !this.budget.allow(source, priority, ProviderBudget.apifyEstimate(places, reviews))) throw new BudgetSkipError(source);
 
     const url = `https://api.apify.com/v2/acts/${encodeURIComponent(this.actorId)}/run-sync-get-dataset-items`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), RUN_TIMEOUT_MS);
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
-        body: JSON.stringify(input),
-        signal: ctrl.signal,
-      });
-    } catch (e) {
-      if ((e as Error).name === "AbortError") throw new ApifyError("timeout");
-      throw new ApifyError("network", (e as Error).message);
-    } finally { clearTimeout(timer); }
+    let res!: Response;
+    // One retry on a transient Apify failure (5xx, or 408 when the synchronous run took too long).
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), RUN_TIMEOUT_MS);
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+          body: JSON.stringify(input),
+          signal: ctrl.signal,
+        });
+      } catch (e) {
+        if ((e as Error).name === "AbortError") throw new ApifyError("timeout");
+        throw new ApifyError("network", (e as Error).message);
+      } finally { clearTimeout(timer); }
+      if (!(res.status >= 500 || res.status === 408) || attempt === 1) break;
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    }
 
     if (res.status === 429) throw new ApifyError("rate_limit");
     if (!res.ok) {

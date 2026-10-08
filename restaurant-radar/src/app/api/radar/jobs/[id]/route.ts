@@ -16,7 +16,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (job.status === "error") {
     if (error instanceof ApifyError) {
       console.warn("radar job: apify", error.message); // e.g. "actor_failed: HTTP 401" (never contains the token)
-      view.error = t("err." + error.code); view.code = error.code;
+      // Show the provider's own reason (HTTP status + its message, never the token) so the owner can act on it.
+      const detail = error.message.replace(/^\w+:\s*/, "").slice(0, 220);
+      view.error = t("err." + error.code) + (detail && detail !== error.code ? ` (${t("err.detail")} : ${detail})` : ""); view.code = error.code;
     }
     else { console.error("radar job failed", error); view.error = t("home.errFail"); }
   }

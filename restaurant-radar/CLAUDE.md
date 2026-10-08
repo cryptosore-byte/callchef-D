@@ -25,6 +25,7 @@ Next.js 14 (app router) + TypeScript + Tailwind. No DB yet.
     npx tsx scripts/test-v3.ts                 # V3: food type, Bayesian rating, threat vs benchmark, no-data-no-claim, no raw i18n keys
     npx tsx scripts/test-continuous.ts         # deep -> cache -> light (+market changes) -> test -> monthly, costs and incremental reviews
     npx tsx scripts/test-home.ts               # homepage: autocomplete (no paid call), compare matching
+    npx tsx scripts/check-keys.ts              # on the server: Apify key valid? credit left? actor reachable? (never prints keys)
     npx tsx scripts/checki18n.ts               # every t("key") exists in en + fr, placeholders match
     npx tsx scripts/live-scan.ts "Name" "City" 2000   # REAL scan (costs money; needs APIFY_API_TOKEN)
 Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify to avoid cache bleed.
