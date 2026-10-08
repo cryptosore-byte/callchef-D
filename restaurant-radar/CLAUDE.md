@@ -24,6 +24,7 @@ Next.js 14 (app router) + TypeScript + Tailwind. No DB yet.
     npx tsx scripts/test-jobs.ts               # async scan job: stage order, competitors revealed early, errors
     npx tsx scripts/test-v3.ts                 # V3: food type, Bayesian rating, threat vs benchmark, no-data-no-claim, no raw i18n keys
     npx tsx scripts/test-continuous.ts         # deep -> cache -> light (+market changes) -> test -> monthly, costs and incremental reviews
+    npx tsx scripts/test-home.ts               # homepage: autocomplete (no paid call), compare matching
     npx tsx scripts/checki18n.ts               # every t("key") exists in en + fr, placeholders match
     npx tsx scripts/live-scan.ts "Name" "City" 2000   # REAL scan (costs money; needs APIFY_API_TOKEN)
 Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify to avoid cache bleed.
@@ -37,6 +38,14 @@ Run all checks after any change. Use `CACHE_DIR=/tmp/x` when running test-apify 
 - `src/lib/jobs.ts` in-memory scan jobs (TTL 30 min). `runRadar` emits `onProgress` per stage (`src/lib/stages.ts`) with real partial data (target, nearby count, confirmed competitors). Client: `src/lib/scanJob.ts` (start + 1s polling), `ScanProgress` shows competitors first, then the full result.
 - UI: `/radar` answers 6 questions (where you stand, who to watch, what customers think, where weak online, what to test, what not to touch) + discovery insight + "if we owned it". `?debug=1` shows the admin/debug panel. Components: `WarRoom` (competitor cards), `DigitalHealth`, `V3.tsx` (decisions, plan, debug), `ShareCard` (3 takeaways + test of the month).
 - `src/app/`: `/` landing, `/radar` dashboard, `/report` shareable card, `/api/radar` (sync), `/api/radar/jobs` (POST start) + `/api/radar/jobs/[id]` (GET progress).
+
+## Homepage (360°)
+ONE SEARCH. FOUR DIMENSIONS. ONE CLEAR DECISION. `src/app/page.tsx` + `src/components/home/` (PlaceSearch, Pillars + DecisionStatement, Preview + RadarRings).
+- Autocomplete: `/api/places/suggest` -> `PlaceSuggestProvider` (Photon/OSM, free; demo = fictional places). 300 ms debounce, 7-day in-memory cache, per-IP cap. NEVER Apify on this page: the paid scan starts only after the owner confirms the restaurant (identity card).
+- "Comparer deux restaurants": `RadarInput.compareWith`, matched by name among places already scanned (`matchPlace`, no extra paid call), forced into competitors, battle opens on /radar. Not found = said so (`result.compare` without id), never guessed.
+- Website / Instagram are resolved from the Google listing and the site HTML; nothing to fill before the first scan.
+- Preview = fictional demo restaurant, labelled DEMONSTRATION DATA; its lines must stay consistent with the demo scan output.
+- Copy rules: GEO = readiness, never a claimed AI ranking; followers are not sales; no social score without a connected source.
 
 ## Env vars (see `.env.example`)
 APIFY_API_TOKEN (enables live data), SITE_PASSWORD (optional basic auth for self-hosting), APIFY_GOOGLE_MAPS_ACTOR_ID (optional), TYPESAFE_API_KEY (enables real Jev), TYPESAFE_API_URL (optional), MAX_NEARBY_RESTAURANTS / MAX_REVIEWS_TARGET / MAX_REVIEWS_PER_COMPETITOR / MAX_COMPETITORS_ANALYZED / SCAN_CACHE_HOURS, OPTIONAL_LLM_API_KEY, DATABASE_URL.

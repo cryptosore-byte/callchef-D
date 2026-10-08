@@ -320,3 +320,6 @@ export function demoDigital(nowMs = Date.now()) {
     },
   };
 }
+
+/** Fictional names for the demo autocomplete (target first). */
+export const DEMO_PLACE_NAMES = SPECS.map((s) => ({ id: s.id, name: s.name, address: s.address, target: s.id === TARGET_ID }));

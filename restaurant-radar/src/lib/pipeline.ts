@@ -100,6 +100,13 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: R
     confirmed0 = nearby.slice(0, CONFIG.limits.maxCompetitorsAnalyzed).map((c) => ({ ...c, competitorProbability: c.relevance / 100, competitorConfidence: 0, threatScore: c.threatPotential }));
   }
 
+  // "Compare two restaurants": the second one is matched among places already scanned and always analysed.
+  const compare = input.compareWith ? { query: input.compareWith, id: matchPlace(input.compareWith, nearby)?.restaurant.id } : undefined;
+  if (compare?.id && !confirmed0.some((c) => c.restaurant.id === compare.id)) {
+    const c = nearby.find((n) => n.restaurant.id === compare.id)!;
+    confirmed0 = [...confirmed0, { ...c, competitorProbability: c.relevance / 100, competitorConfidence: 0, threatScore: c.threatPotential }];
+  }
+
   partial.competitors = confirmed0.map((c) => ({ restaurant: slim(c.restaurant), distanceM: c.distanceM, competitorProbability: c.competitorProbability, competitorConfidence: c.competitorConfidence, reputation: c.reputation, threatLevel: c.threatLevel, benchmarkLevel: c.benchmarkLevel }));
   emit("reviews");
 
@@ -163,9 +170,19 @@ export async function runRadar(input: RadarInput, locale: Locale = "en", opts: R
   return {
     id: demo ? "demo" : target.id, demo, locale, input, target, nearby, competitors, summaries, market, decisions,
     radarScore, battles, plan, dataQuality,
-    sources: [target.source], generatedAt: new Date().toISOString(), warnings,
+    sources: [target.source], generatedAt: new Date().toISOString(), warnings, compare,
     targetReputation: targetRep, competitorCards, roles, digital, evidence, opportunities, discovery,
     cost: budget.report(),
     scenarios: whatIf, advantage, expectationGap: gap, menuInsights: menu, summaryState,
   };
+}
+
+const words = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+
+/** Best name match for the restaurant to compare with; every query word must appear in the place name. */
+export function matchPlace(query: string, nearby: CompetitorCandidate[]): CompetitorCandidate | undefined {
+  const q = words(query);
+  if (!q.length) return undefined;
+  const hits = nearby.filter((n) => { const w = new Set(words(n.restaurant.name)); return q.every((x) => w.has(x)); });
+  return hits.sort((a, b) => words(a.restaurant.name).length - words(b.restaurant.name).length)[0];
 }

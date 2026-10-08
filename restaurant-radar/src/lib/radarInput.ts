@@ -18,6 +18,7 @@ export function parseRadarBody(raw: unknown): { input: RadarInput; locale: Local
       address: String(body.address ?? "").slice(0, 200),
       radiusM: [500, 1000, 2000, 3000].includes(Number(body.radiusM)) ? Number(body.radiusM) : 1000,
       demo: !!body.demo,
+      ...(String(body.compareWith ?? "").trim() ? { compareWith: String(body.compareWith).trim().slice(0, 120) } : {}),
     },
   };
 }

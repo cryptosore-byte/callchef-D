@@ -89,6 +89,12 @@ export function WarRoom({ r, focus = false }: { r: RadarResult; focus?: boolean 
   const { locale } = useLocale();
   const [sel, setSel] = useState<Competitor | null>(null);
   const [all, setAll] = useState(!focus);
+  // "Compare two restaurants": open the head-to-head once the result arrives.
+  const compared = r.compare?.id ? r.competitors.find((c) => c.restaurant.id === r.compare!.id) : undefined;
+  const opened = useRef("");
+  useEffect(() => {
+    if (compared && r.battles[compared.restaurant.id] && opened.current !== r.id + compared.restaurant.id) { opened.current = r.id + compared.restaurant.id; setSel(compared); }
+  }, [compared, r]);
   const confirmedIds = new Set(r.competitors.map((c) => c.restaurant.id));
   const ruledOut = r.nearby.filter((n) => !confirmedIds.has(n.restaurant.id));
   const roles = r.roles;
@@ -108,6 +114,14 @@ export function WarRoom({ r, focus = false }: { r: RadarResult; focus?: boolean 
         <h2 id="wr" className="font-display text-2xl font-bold md:text-3xl">{t("cc.title")}</h2>
         <p className="text-sm text-mist">{t("cc.sub", { n: r.nearby.length, radius: r.input.radiusM >= 1000 ? `${r.input.radiusM / 1000} km` : `${r.input.radiusM} m`, c: r.competitors.length })}</p>
       </div>
+
+      {r.compare && (
+        <p role="status" className="mt-3 rounded-xl border border-line bg-paper px-4 py-3 text-sm">
+          {compared
+            ? <>{t("cmp.found", { a: r.target.name, b: compared.restaurant.name })} <button onClick={() => setSel(compared)} className="font-bold underline">{t("cc.compare")}</button></>
+            : t("cmp.notFound", { b: r.compare.query, radius: r.input.radiusM >= 1000 ? `${r.input.radiusM / 1000} km` : `${r.input.radiusM} m` })}
+        </p>
+      )}
 
       {list.length === 0 ? (
         <p className="mt-4 rounded-xl border border-line bg-paper p-5">{t("warn.noCompetitors")}</p>

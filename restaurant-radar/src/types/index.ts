@@ -299,7 +299,11 @@ export interface DataQuality {
 
 // ---- Final payload --------------------------------------------------------
 
-export interface RadarInput { name: string; address: string; radiusM: number; demo?: boolean; }
+export interface RadarInput {
+  name: string; address: string; radiusM: number; demo?: boolean;
+  /** "Comparer deux restaurants": a second restaurant, matched among the places already scanned (no extra paid call). */
+  compareWith?: string;
+}
 
 export interface RadarResult {
   id: string;
@@ -319,6 +323,8 @@ export interface RadarResult {
   sources: SourceMeta[];
   generatedAt: string;
   warnings: string[];
+  /** Set when the owner asked to compare with a second restaurant. `id` is absent when it was not found in the scanned area. */
+  compare?: { query: string; id?: string };
   // ---- V3 ----
   targetReputation?: Reputation;
   competitorCards?: Record<string, import("@/services/CompetitorInsightService").CompetitorCard>;
