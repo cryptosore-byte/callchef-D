@@ -9,7 +9,7 @@ const DC_CLS = { HIGH: "text-fennel", MEDIUM: "text-saffron", LOW: "text-mist" }
 const CHK_CLS = { OK: "bg-fennel", WEAK: "bg-saffron", MISSING: "bg-chili", UNKNOWN: "bg-line" } as const;
 
 /** Check label; when a value is unknown, the "(...)" part with an unfilled placeholder is dropped. */
-const checkLabel = (t: T, c: Check) => {
+export const checkLabel = (t: T, c: Check) => {
   const s = t(c.key, c.params ? Object.fromEntries(Object.entries(c.params).map(([k, v]) => [k, num(v, t.locale)])) : undefined);
   return s.replace(/\s*\([^)]*\{\w+\}[^)]*\)/g, "");
 };

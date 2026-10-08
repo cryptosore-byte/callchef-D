@@ -14,7 +14,7 @@ const VERDICT_CLS: Record<BattleVerdict, string> = {
   TOO_CLOSE: "bg-line text-ink",
 };
 
-function BattleMode({ r, c, onClose }: { r: RadarResult; c: Competitor; onClose: () => void }) {
+export function BattleMode({ r, c, onClose }: { r: RadarResult; c: Competitor; onClose: () => void }) {
   const t = useT();
   const b = r.battles[c.restaurant.id];
   const ref = useRef<HTMLDivElement>(null);

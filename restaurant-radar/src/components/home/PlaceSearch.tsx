@@ -107,14 +107,16 @@ export function Identity({ s, onClear }: { s: PlaceSuggestion; onClear: () => vo
 }
 
 /** City or street address, next to the name: needed to find the right restaurant on Google Maps. */
-export function AddressField({ id, label, placeholder, value, onChange, big = false }: { id: string; label: string; placeholder: string; value: string; onChange: (v: string) => void; big?: boolean }) {
+export function AddressField({ id, label, placeholder, value, onChange, big = false, icon = "pin" }: { id: string; label: string; placeholder: string; value: string; onChange: (v: string) => void; big?: boolean; icon?: "pin" | "city" }) {
   return (
     <div className="flex items-center gap-3 border-b-2 border-ink/80 focus-within:border-ink">
       <label htmlFor={id} className="sr-only">{label}</label>
       <svg width={big ? 20 : 17} height={big ? 20 : 17} viewBox="0 0 24 24" aria-hidden className="shrink-0 text-mist">
-        <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" fill="none" stroke="currentColor" strokeWidth="1.7" /><circle cx="12" cy="10" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.7" />
+        {icon === "pin"
+          ? <><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" fill="none" stroke="currentColor" strokeWidth="1.7" /><circle cx="12" cy="10" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.7" /></>
+          : <path d="M3 21h18M5 21V9l5-3v15M10 21V4l9 4v13M13 10h3M13 14h3M7 12h1M7 16h1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />}
       </svg>
-      <input id={id} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoComplete="address-level2"
+      <input id={id} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoComplete={icon === "city" ? "address-level2" : "street-address"}
         className={`w-full bg-transparent py-3 outline-none placeholder:text-mist/70 focus-visible:outline-none ${big ? "font-display text-xl md:text-2xl" : "text-base"}`} />
     </div>
   );

@@ -47,6 +47,9 @@ ONE SEARCH. FOUR DIMENSIONS. ONE CLEAR DECISION. `src/app/page.tsx` + `src/compo
 - Preview = fictional demo restaurant, labelled DEMONSTRATION DATA; its lines must stay consistent with the demo scan output.
 - Copy rules: GEO = readiness, never a claimed AI ranking; followers are not sales; no social score without a connected source.
 
+## Results page (/radar)
+Hero (identity + 4 headline numbers + the test) -> sticky chapter nav -> "what changed" (only if any) -> 5 chapters in `src/components/report/Chapters.tsx`: 01 competition (rating dot plot + review volume bars + watch/benchmark cards), 02 reputation (your themes as diverging bars, you vs competitors dumbbell on complaint share, what customers love about them), 03 SEO & AI (two gauges + checks), 04 social (stats or explicit NOT CONNECTED), 05 action plan (the test + why + protect/test/exploit/not a priority). Each chapter opens with ONE sentence computed by code. Everything else under "Suivi, historique et tous les détails". Motion: `report/motion.tsx` (animate on scroll, reduced-motion safe).
+
 ## Env vars (see `.env.example`)
 APIFY_API_TOKEN (enables live data), SITE_PASSWORD (optional basic auth for self-hosting), APIFY_GOOGLE_MAPS_ACTOR_ID (optional), TYPESAFE_API_KEY (enables real Jev), TYPESAFE_API_URL (optional), MAX_NEARBY_RESTAURANTS / MAX_REVIEWS_TARGET / MAX_REVIEWS_PER_COMPETITOR / MAX_COMPETITORS_ANALYZED / SCAN_CACHE_HOURS, OPTIONAL_LLM_API_KEY, DATABASE_URL.
 

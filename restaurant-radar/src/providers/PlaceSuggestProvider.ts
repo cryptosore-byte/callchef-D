@@ -8,6 +8,7 @@ export interface PlaceSuggestion {
   name: string;
   /** Street + city, used as the address of the scan. */
   address: string;
+  street?: string;
   city?: string;
   /** OSM amenity: restaurant, fast_food, cafe, bar, pub... */
   kind?: string;
@@ -35,7 +36,7 @@ export class PhotonSuggestProvider implements PlaceSuggestProvider {
       if (!p.name || !FOOD.has(String(p.osm_value))) continue;
       const street = [p.housenumber, p.street].filter(Boolean).join(" ");
       const city = [p.postcode, p.city ?? p.town ?? p.village].filter(Boolean).join(" ");
-      out.push({ id: `osm:${p.osm_type}${p.osm_id}`, name: String(p.name), address: [street, city].filter(Boolean).join(", "), city: String(p.city ?? p.town ?? p.village ?? "") || undefined, kind: String(p.osm_value), source: "osm" });
+      out.push({ id: `osm:${p.osm_type}${p.osm_id}`, name: String(p.name), address: [street, city].filter(Boolean).join(", "), street: street || undefined, city: String(p.city ?? p.town ?? p.village ?? "") || undefined, kind: String(p.osm_value), source: "osm" });
     }
     return out.slice(0, 6);
   }
@@ -46,6 +47,6 @@ export class DemoSuggestProvider implements PlaceSuggestProvider {
   async suggest(q: string, _lang: string, scope: "target" | "compare" = "target"): Promise<PlaceSuggestion[]> {
     const n = q.toLowerCase();
     return DEMO_PLACE_NAMES.filter((p) => (scope === "target") === p.target && p.name.toLowerCase().includes(n)).slice(0, 6)
-      .map((p) => ({ id: `demo:${p.id}`, name: p.name, address: p.address, city: "Marseille", kind: "restaurant", source: "demo" as const }));
+      .map((p) => ({ id: `demo:${p.id}`, name: p.name, address: p.address, street: p.address.split(",")[0], city: "Marseille", kind: "restaurant", source: "demo" as const }));
   }
 }

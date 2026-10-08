@@ -18,8 +18,10 @@ export default function Home() {
   const router = useRouter();
   const { t, locale } = useLocale();
   const [text, setText] = useState("");
-  const [addr, setAddr] = useState("");
-  const [addr2, setAddr2] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [city2, setCity2] = useState("");
+  const addr = [street.trim(), city.trim()].filter(Boolean).join(", ");
   const [picked, setPicked] = useState<PlaceSuggestion | null>(null);
   const [comparing, setComparing] = useState(false);
   const [text2, setText2] = useState("");
@@ -35,10 +37,10 @@ export default function Home() {
   async function run(demo: boolean) {
     setError(null);
     const typed = fromText(text);
-    const target = picked ? { name: picked.name, address: picked.address || addr.trim() } : { name: typed.name, address: addr.trim() || typed.address };
+    const target = picked ? { name: picked.name, address: picked.address || addr } : { name: typed.name, address: addr || typed.address };
     const compareWith = comparing ? (picked2?.name ?? fromText(text2).name) : "";
     if (!demo && !target.name) { setError(t("home.errName")); return; }
-    if (!demo && !picked && !target.address && !demoMode) { setError(t("hs.errPick")); return; }
+    if (!demo && !picked && !city.trim() && !typed.address && !demoMode) { setError(t("hs.errPick")); return; }
     if (!demo && comparing && !compareWith) { setError(t("hs.errCompare")); return; }
     const body = demo
       ? { name: "Maison Brasero", address: "Marseille", radiusM: 1000, demo: true, locale }
@@ -79,22 +81,23 @@ export default function Home() {
                 <form onSubmit={(e) => { e.preventDefault(); run(false); }} noValidate>
                   {demoMode && <p className="mb-4 rounded-lg bg-saffron/10 px-3 py-2 text-sm text-saffron">{t("home.notLive")}</p>}
 
-                  <div className="grid gap-x-6 gap-y-2 md:grid-cols-[1.4fr_1fr]">
-                    <PlaceSearch id="q" big label={t("hs.label")} placeholder={t("hs.ph")} value={text} onText={setText} near={addr}
-                      picked={picked} onPick={(s) => { setPicked(s); if (s?.address) setAddr(s.address); }} demo={demoMode} />
-                    <AddressField id="addr" big label={t("hs.addrLabel")} placeholder={t("hs.addrPh")} value={addr} onChange={(v) => { setAddr(v); if (picked) setPicked(null); }} />
+                  <PlaceSearch id="q" big label={t("hs.label")} placeholder={t("hs.ph")} value={text} onText={setText} near={city}
+                    picked={picked} onPick={(s) => { setPicked(s); if (s) { setStreet(s.street ?? ""); setCity(s.city ?? ""); } }} demo={demoMode} />
+                  <div className="mt-2 grid gap-x-6 gap-y-2 sm:grid-cols-[1.3fr_1fr]">
+                    <AddressField id="street" icon="pin" label={t("hs.street")} placeholder={t("hs.streetPh")} value={street} onChange={(v) => { setStreet(v); if (picked) setPicked(null); }} />
+                    <AddressField id="city" icon="city" label={t("hs.city")} placeholder={t("hs.cityPh")} value={city} onChange={(v) => { setCity(v); if (picked) setPicked(null); }} />
                   </div>
-                  {picked && <Identity s={picked} onClear={() => { setPicked(null); setText(""); setAddr(""); }} />}
+                  {picked && <Identity s={picked} onClear={() => { setPicked(null); setText(""); setStreet(""); setCity(""); }} />}
 
                   {comparing && (
                     <div className="rise mt-5">
                       <p className="mb-1 font-display text-xs font-bold tracking-[0.16em] text-mist">{t("hs.vs")}</p>
                       <div className="grid gap-x-6 gap-y-2 md:grid-cols-[1.4fr_1fr]">
-                        <PlaceSearch id="q2" scope="compare" label={t("hs.label2")} placeholder={t("hs.ph2")} value={text2} onText={setText2} near={addr2 || addr}
-                          picked={picked2} onPick={(s) => { setPicked2(s); if (s?.address) setAddr2(s.address); }} demo={demoMode} />
-                        <AddressField id="addr2" label={t("hs.addrLabel2")} placeholder={addr ? t("hs.addrPh2same") : t("hs.addrPh")} value={addr2} onChange={(v) => { setAddr2(v); if (picked2) setPicked2(null); }} />
+                        <PlaceSearch id="q2" scope="compare" label={t("hs.label2")} placeholder={t("hs.ph2")} value={text2} onText={setText2} near={city2.trim() || city.trim()}
+                          picked={picked2} onPick={(s) => { setPicked2(s); if (s?.city) setCity2(s.city); }} demo={demoMode} />
+                        <AddressField id="city2" icon="city" label={t("hs.city2")} placeholder={city ? t("hs.addrPh2same") : t("hs.cityPh")} value={city2} onChange={(v) => { setCity2(v); if (picked2) setPicked2(null); }} />
                       </div>
-                      {picked2 && <Identity s={picked2} onClear={() => { setPicked2(null); setText2(""); setAddr2(""); }} />}
+                      {picked2 && <Identity s={picked2} onClear={() => { setPicked2(null); setText2(""); setCity2(""); }} />}
                       <p className="mt-2 text-xs text-mist">{t("hs.vsNote")}</p>
                     </div>
                   )}
@@ -106,7 +109,7 @@ export default function Home() {
                       {t("hs.run")}
                       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="transition-transform group-hover:translate-x-0.5"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </button>
-                    <button type="button" aria-pressed={comparing} onClick={() => { setComparing((c) => !c); setPicked2(null); setText2(""); setAddr2(""); }}
+                    <button type="button" aria-pressed={comparing} onClick={() => { setComparing((c) => !c); setPicked2(null); setText2(""); setCity2(""); }}
                       className="rounded-full border border-ink/25 px-6 py-3 text-sm font-semibold transition hover:border-ink">
                       {comparing ? t("hs.compareOff") : t("hs.compare")}
                     </button>
