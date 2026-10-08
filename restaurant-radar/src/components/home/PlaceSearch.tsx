@@ -13,9 +13,11 @@ export function fromText(text: string): { name: string; address: string } {
  * One field, search-as-you-type. Debounced (300 ms), min 2 characters, server-cached, never a paid provider.
  * `onPick` receives the confirmed identity; typing again clears it.
  */
-export function PlaceSearch({ id, label, placeholder, value, onText, picked, onPick, demo, scope = "target", big = false }: {
+export function PlaceSearch({ id, label, placeholder, value, onText, picked, onPick, demo, near = "", scope = "target", big = false }: {
   id: string; label: string; placeholder: string; value: string; onText: (v: string) => void;
-  picked: PlaceSuggestion | null; onPick: (s: PlaceSuggestion | null) => void; demo: boolean; scope?: "target" | "compare"; big?: boolean;
+  picked: PlaceSuggestion | null; onPick: (s: PlaceSuggestion | null) => void; demo: boolean;
+  /** City or address typed next to the name: narrows the suggestions. */
+  near?: string; scope?: "target" | "compare"; big?: boolean;
 }) {
   const { t, locale } = useLocale();
   const [items, setItems] = useState<PlaceSuggestion[]>([]);
@@ -27,19 +29,20 @@ export function PlaceSearch({ id, label, placeholder, value, onText, picked, onP
 
   useEffect(() => {
     const q = value.trim();
+    const full = near.trim() && !demo ? `${q} ${near.trim()}` : q;
     if (picked || q.length < 2) { setItems([]); setLoading(false); return; }
     const n = ++seq.current;
     setLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/places/suggest?q=${encodeURIComponent(q)}&lang=${locale}&scope=${scope}${demo ? "&demo=1" : ""}`);
+        const r = await fetch(`/api/places/suggest?q=${encodeURIComponent(full)}&lang=${locale}&scope=${scope}${demo ? "&demo=1" : ""}`);
         const d = await r.json();
         if (n === seq.current) { setItems(d.suggestions ?? []); setActive(-1); setOpen(true); }
       } catch { if (n === seq.current) setItems([]); }
       finally { if (n === seq.current) setLoading(false); }
     }, 300);
     return () => clearTimeout(timer);
-  }, [value, picked, locale, scope, demo]);
+  }, [value, near, picked, locale, scope, demo]);
 
   const choose = (s: PlaceSuggestion) => { onPick(s); onText(s.name); setOpen(false); };
   const showList = open && !picked && value.trim().length >= 2 && (items.length > 0 || !loading);
@@ -99,6 +102,20 @@ export function Identity({ s, onClear }: { s: PlaceSuggestion; onClear: () => vo
         <p className="truncate text-sm text-mist">{[s.kind && t("kind." + s.kind), s.address].filter(Boolean).join(" · ")}</p>
       </div>
       <button type="button" onClick={onClear} className="shrink-0 text-sm font-semibold text-mist underline hover:text-ink">{t("hs.change")}</button>
+    </div>
+  );
+}
+
+/** City or street address, next to the name: needed to find the right restaurant on Google Maps. */
+export function AddressField({ id, label, placeholder, value, onChange, big = false }: { id: string; label: string; placeholder: string; value: string; onChange: (v: string) => void; big?: boolean }) {
+  return (
+    <div className="flex items-center gap-3 border-b-2 border-ink/80 focus-within:border-ink">
+      <label htmlFor={id} className="sr-only">{label}</label>
+      <svg width={big ? 20 : 17} height={big ? 20 : 17} viewBox="0 0 24 24" aria-hidden className="shrink-0 text-mist">
+        <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" fill="none" stroke="currentColor" strokeWidth="1.7" /><circle cx="12" cy="10" r="2.3" fill="none" stroke="currentColor" strokeWidth="1.7" />
+      </svg>
+      <input id={id} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoComplete="address-level2"
+        className={`w-full bg-transparent py-3 outline-none placeholder:text-mist/70 focus-visible:outline-none ${big ? "font-display text-xl md:text-2xl" : "text-base"}`} />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { radiusLabel } from "@/lib/labels";
 import { CONFIG } from "@/config";
 import { STORAGE_KEY } from "@/lib/useRadarResult";
 import { startScan } from "@/lib/scanJob";
-import { PlaceSearch, Identity, fromText } from "@/components/home/PlaceSearch";
+import { PlaceSearch, Identity, AddressField, fromText } from "@/components/home/PlaceSearch";
 import { Pillars, DecisionStatement } from "@/components/home/Pillars";
 import { Preview, RadarRings } from "@/components/home/Preview";
 import type { PlaceSuggestion } from "@/providers/PlaceSuggestProvider";
@@ -18,6 +18,8 @@ export default function Home() {
   const router = useRouter();
   const { t, locale } = useLocale();
   const [text, setText] = useState("");
+  const [addr, setAddr] = useState("");
+  const [addr2, setAddr2] = useState("");
   const [picked, setPicked] = useState<PlaceSuggestion | null>(null);
   const [comparing, setComparing] = useState(false);
   const [text2, setText2] = useState("");
@@ -32,7 +34,8 @@ export default function Home() {
 
   async function run(demo: boolean) {
     setError(null);
-    const target = picked ? { name: picked.name, address: picked.address } : fromText(text);
+    const typed = fromText(text);
+    const target = picked ? { name: picked.name, address: picked.address || addr.trim() } : { name: typed.name, address: addr.trim() || typed.address };
     const compareWith = comparing ? (picked2?.name ?? fromText(text2).name) : "";
     if (!demo && !target.name) { setError(t("home.errName")); return; }
     if (!demo && !picked && !target.address && !demoMode) { setError(t("hs.errPick")); return; }
@@ -76,16 +79,22 @@ export default function Home() {
                 <form onSubmit={(e) => { e.preventDefault(); run(false); }} noValidate>
                   {demoMode && <p className="mb-4 rounded-lg bg-saffron/10 px-3 py-2 text-sm text-saffron">{t("home.notLive")}</p>}
 
-                  <PlaceSearch id="q" big label={t("hs.label")} placeholder={t("hs.ph")} value={text} onText={setText}
-                    picked={picked} onPick={setPicked} demo={demoMode} />
-                  {picked && <Identity s={picked} onClear={() => { setPicked(null); setText(""); }} />}
+                  <div className="grid gap-x-6 gap-y-2 md:grid-cols-[1.4fr_1fr]">
+                    <PlaceSearch id="q" big label={t("hs.label")} placeholder={t("hs.ph")} value={text} onText={setText} near={addr}
+                      picked={picked} onPick={(s) => { setPicked(s); if (s?.address) setAddr(s.address); }} demo={demoMode} />
+                    <AddressField id="addr" big label={t("hs.addrLabel")} placeholder={t("hs.addrPh")} value={addr} onChange={(v) => { setAddr(v); if (picked) setPicked(null); }} />
+                  </div>
+                  {picked && <Identity s={picked} onClear={() => { setPicked(null); setText(""); setAddr(""); }} />}
 
                   {comparing && (
                     <div className="rise mt-5">
                       <p className="mb-1 font-display text-xs font-bold tracking-[0.16em] text-mist">{t("hs.vs")}</p>
-                      <PlaceSearch id="q2" scope="compare" label={t("hs.label2")} placeholder={t("hs.ph2")} value={text2} onText={setText2}
-                        picked={picked2} onPick={setPicked2} demo={demoMode} />
-                      {picked2 && <Identity s={picked2} onClear={() => { setPicked2(null); setText2(""); }} />}
+                      <div className="grid gap-x-6 gap-y-2 md:grid-cols-[1.4fr_1fr]">
+                        <PlaceSearch id="q2" scope="compare" label={t("hs.label2")} placeholder={t("hs.ph2")} value={text2} onText={setText2} near={addr2 || addr}
+                          picked={picked2} onPick={(s) => { setPicked2(s); if (s?.address) setAddr2(s.address); }} demo={demoMode} />
+                        <AddressField id="addr2" label={t("hs.addrLabel2")} placeholder={addr ? t("hs.addrPh2same") : t("hs.addrPh")} value={addr2} onChange={(v) => { setAddr2(v); if (picked2) setPicked2(null); }} />
+                      </div>
+                      {picked2 && <Identity s={picked2} onClear={() => { setPicked2(null); setText2(""); setAddr2(""); }} />}
                       <p className="mt-2 text-xs text-mist">{t("hs.vsNote")}</p>
                     </div>
                   )}
@@ -97,7 +106,7 @@ export default function Home() {
                       {t("hs.run")}
                       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="transition-transform group-hover:translate-x-0.5"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </button>
-                    <button type="button" aria-pressed={comparing} onClick={() => { setComparing((c) => !c); setPicked2(null); setText2(""); }}
+                    <button type="button" aria-pressed={comparing} onClick={() => { setComparing((c) => !c); setPicked2(null); setText2(""); setAddr2(""); }}
                       className="rounded-full border border-ink/25 px-6 py-3 text-sm font-semibold transition hover:border-ink">
                       {comparing ? t("hs.compareOff") : t("hs.compare")}
                     </button>
