@@ -29,3 +29,10 @@
 
 /* Business card frame for the agency signature. */
 .agency-visual{background:#dfefe8}.agency-visual svg{overflow:visible}.agency-visual>p{letter-spacing:.14em}
+/* Platform logos: ink by default, brand colour on hover */
+.platform{display:inline-flex;align-items:center;gap:8px;font-size:19px;font-weight:700;letter-spacing:-.6px;color:var(--ink);transition:color .3s,transform .3s}
+.platform svg{height:26px;width:26px;fill:currentColor;flex:none}
+.pf-uber svg{height:38px;width:38px}
+.platform:hover{color:var(--brand);transform:translateY(-2px)}
+.footer-bottom{flex-wrap:wrap}.trademark{flex-basis:100%;font-size:9px;opacity:.55;line-height:1.5}
+@media(max-width:760px){.platform{font-size:16px;gap:6px}.platform svg{height:22px;width:22px}.pf-uber svg{height:32px;width:32px}}

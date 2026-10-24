@@ -61,7 +61,7 @@
   mark('.approach-trio p','flip');
   mark('.chart-card','rise');
   mark('.pricing-grid>article','rise');
-  mark('.platforms span','pop');
+  mark('.platforms>div>span','pop');
   mark('.initials span','pop');
   mark('.savings-strip,.compact-faq details,.pricing-note,.demo-label','up');
   mark('.contact form>*','up');
