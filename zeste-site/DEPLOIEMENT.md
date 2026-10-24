@@ -12,6 +12,7 @@
 > | Mettre le site à jour | `bash /opt/zeste/deploy/update.sh` |
 > | Activer / changer le formulaire | `nano /etc/zeste/zeste.env` puis `bash /opt/zeste/deploy/update.sh --restart` |
 > | Voir les erreurs | `docker logs --tail 30 zeste-site` |
+> | Après toute modification de `/root/sel-crm/Caddyfile` | `docker restart sel-crm-caddy-1` (un simple *reload* peut ne pas voir le fichier si un éditeur l'a remplacé) |
 >
 > La toute première fois, `update.sh` n'est pas encore sur le VPS :
 > `curl -fsSL https://raw.githubusercontent.com/cryptosore-byte/callchef-D/claude/clever-heisenberg-zh277j/zeste-site/deploy/update.sh | bash`
