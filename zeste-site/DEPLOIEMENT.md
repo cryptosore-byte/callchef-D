@@ -8,16 +8,21 @@ Ce que ça installe : le site, le formulaire de contact (envoi par e-mail), le H
 
 ## 1. Faire pointer le domaine vers le VPS
 
-hPanel → **Domaines** → ton domaine → **DNS / Serveurs de noms** :
+Le domaine reste chez IONOS ; on lui dit seulement d'envoyer les visiteurs vers le VPS Hostinger.
 
-| Type | Nom | Valeur |
-|------|-----|--------|
-| A | `@` | `IP_DU_VPS` |
-| A | `www` | `IP_DU_VPS` |
+1. Récupère l'IP du VPS : hPanel → **VPS** → **Gérer** → « Adresse IP » (IPv4, 4 nombres du type `82.25.xx.xx`).
+2. Connecte-toi sur ionos.fr → **Domaines & SSL** → clique sur ton domaine → onglet **DNS**.
+3. Modifie ou crée ces enregistrements :
 
-Supprime les anciens enregistrements **A** (et AAAA) de `@` et `www` qui pointent ailleurs (page parking Hostinger). La prise en compte prend de quelques minutes à quelques heures.
+| Type | Nom d'hôte | Valeur | Action |
+|------|-----------|--------|--------|
+| A | `@` | `IP_DU_VPS` | modifier celui qui existe |
+| A | `www` | `IP_DU_VPS` | modifier ou créer (si `www` est un CNAME, le supprimer d'abord) |
+| AAAA | `@` et `www` | (IP IONOS) | **supprimer** |
 
-Vérifier depuis ton ordinateur : `ping tondomaine.fr` doit afficher l'IP du VPS.
+Si IONOS demande de confirmer le changement d'utilisation du domaine, accepte. Ne touche pas aux enregistrements MX/TXT (e-mails).
+
+La prise en compte prend de quelques minutes à quelques heures. Vérifier : sur [dnschecker.org](https://dnschecker.org), tape ton domaine, type **A** : l'IP du VPS doit apparaître.
 
 ## 2. Envoyer le site sur le VPS
 
@@ -47,7 +52,7 @@ sudo bash zeste/deploy/install.sh tondomaine.fr
 
 ## 5. Activer le formulaire de contact
 
-Il faut une adresse e-mail qui envoie les demandes. Le plus simple : créer une boîte `contact@tondomaine.fr` dans hPanel → **E-mails** (Hostinger Email).
+Il faut une adresse e-mail qui envoie les demandes. Ton domaine étant chez IONOS, le plus simple est d'y créer une boîte `contact@tondomaine.fr` (ionos.fr → **E-mail** ; une adresse est souvent incluse avec le domaine). Réglages d'envoi IONOS : `SMTP_HOST=smtp.ionos.fr`, `SMTP_PORT=465`.
 
 ```bash
 sudo nano /etc/zeste/zeste.env
@@ -55,6 +60,7 @@ sudo nano /etc/zeste/zeste.env
 
 Remplis :
 
+- `SMTP_HOST` : `smtp.ionos.fr` (boîte IONOS) — ou `smtp.hostinger.com` si tu utilises Hostinger Email
 - `SMTP_PASSWORD` : le mot de passe de la boîte `contact@tondomaine.fr`
 - `MAIL_TO` : l'adresse où tu veux recevoir les demandes (ton Gmail par exemple)
 
