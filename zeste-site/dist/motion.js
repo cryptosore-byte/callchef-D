@@ -193,7 +193,7 @@
           picked=true;rider.classList.add('loaded');
           if(wide)$('.engine-center').animate([{scale:1},{scale:1.07},{scale:1}],{duration:480,easing:'cubic-bezier(.34,1.56,.64,1)'});
         }
-        if(!dropped&&dist>=dropAt){dropped=true;rider.classList.remove('loaded');pop('+1 commande ↗',p.x,p.y-h*.55);}
+        if(!dropped&&dist>=dropAt){dropped=true;rider.classList.remove('loaded');pop('+1 commande ↗\ufe0e',p.x,p.y-h*.55);}
         if(t>=1){
           parked=true;rider.remove();letter.style.removeProperty('opacity');
           letter.animate([{transform:'scaleY(.86) scaleX(1.07)'},{transform:'scaleY(1.05) scaleX(.98)',offset:.5},{transform:'none'}],{duration:420,easing:'cubic-bezier(.33,1,.68,1)'});
@@ -224,7 +224,7 @@
   }else{heroIn();}
 
   /* ---------- Reveal on enter ---------- */
-  const scrambleChars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789€%↗◆';
+  const scrambleChars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789€%◆';
   function scramble(el){
     if(el.dataset.scrambled||!allowed())return;el.dataset.scrambled='1';
     const original=el.textContent,len=original.length,t0=performance.now(),dur=750;

@@ -36,3 +36,16 @@
 .platform:hover{color:var(--brand);transform:translateY(-2px)}
 .footer-bottom{flex-wrap:wrap}.trademark{flex-basis:100%;font-size:9px;opacity:.55;line-height:1.5}
 @media(max-width:760px){.platform{font-size:16px;gap:6px}.platform svg{height:22px;width:22px}.pf-uber svg{height:32px;width:32px}}
+/* Line arrow icon (replaces the ↗ glyph, which iOS renders as an emoji) */
+.ico-arrow{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;display:inline-block;vertical-align:-.12em}
+.arr{display:inline-grid;place-items:center;width:1em;height:1em;overflow:hidden;flex:none;font-size:20px}
+.arr .ico-arrow{grid-area:1/1;transition:transform .5s cubic-bezier(.7,0,.2,1)}
+.arr .ico-arrow+.ico-arrow{transform:translate(-200%,200%)}
+:is(a,button,summary):hover>.arr .ico-arrow:first-child{transform:translate(200%,-200%)}
+:is(a,button,summary):hover>.arr .ico-arrow+.ico-arrow{transform:none}
+.button .arr{width:32px;height:32px;margin:-6px -10px -6px 0;border-radius:50%;background:var(--butter);color:var(--ink);font-size:15px;transition:scale .4s cubic-bezier(.34,1.56,.64,1)}
+.button .arr .ico-arrow{stroke-width:2.2}
+.button:hover .arr{scale:1.12}
+.price-digital .button .arr{background:var(--ink);color:var(--butter)}
+header>.button .arr{width:26px;height:26px;margin:-4px -6px -4px 0;font-size:13px}
+.chip-icon .ico-arrow{width:15px;height:15px;stroke:currentColor;stroke-width:2.2;vertical-align:0;display:block}.initials b .ico-arrow,.savings-strip>span .ico-arrow{stroke-width:1.6}.expert-tab b .ico-arrow{font-size:14px}
