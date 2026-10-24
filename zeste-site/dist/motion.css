@@ -130,3 +130,4 @@ footer{position:relative;overflow:hidden}.footer-bottom{order:11}
 .ride-rider.loaded .ride-box{scale:1}
 .ride-puff{fill:#f3faf7;transform-box:fill-box;transform-origin:center}
 .ride-tag{position:absolute;z-index:7;pointer-events:none;white-space:nowrap;background:#050706;color:var(--mint);font-size:12px;font-weight:700;letter-spacing:-.01em;padding:7px 12px;border-radius:999px;box-shadow:0 10px 25px #05070630}
+.zeste-intro{will-change:transform}.intro-inner{display:flex;flex-direction:column;align-items:center;gap:26px}

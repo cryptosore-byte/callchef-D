@@ -95,15 +95,17 @@
     const letters=$$('path',heroMark);
     letters.forEach((letter,i)=>animations.push(letter.animate([
       {transform:'translateY(140%) rotate(-14deg) scaleY(1.3)',opacity:0},
-      {transform:'translateY(-6%) rotate(2deg) scaleY(.82) scaleX(1.1)',opacity:1,offset:.62},
-      {transform:'translateY(4%) scaleY(1.06) scaleX(.97)',offset:.82},
+      {transform:'translateY(-6%) rotate(2deg) scaleY(.84) scaleX(1.08)',opacity:1,offset:.62},
+      {transform:'translateY(3%) scaleY(1.04) scaleX(.98)',offset:.82},
       {transform:'none',opacity:1}
-    ],{duration:820,delay:150*i,easing:'cubic-bezier(.22,1,.36,1)',fill:'backwards'})));
-    const landed=150*(letters.length-1)+820;
-    if(scrollY<innerHeight*.5)setTimeout(()=>deliveryRide(letters,4),landed+350);
+    ],{duration:760,delay:110*i,easing:'cubic-bezier(.22,1,.36,1)',fill:'backwards'})));
+    if(scrollY<innerHeight*.5)setTimeout(()=>deliveryRide(letters,4),110*(letters.length-1)+700);
   }
 
-  /* ---------- The "e" goes out on a delivery run ---------- */
+  /* ---------- The "e" rides an S-shaped delivery run ----------
+     Route: hop out to the right, curl into a true S (top stroke leftwards, left bowl, middle stroke
+     through the restaurant, right bowl, bottom stroke), then home along the bottom and the left margin.
+     The trail is a comet: its tail starts erasing mid-run and vanishes into the parked letter. */
   function deliveryRide(letters,index){
     const letter=letters[index];
     if(!letter||!allowed()||!canWAAPI)return;
@@ -111,92 +113,94 @@
     const mk=(tag,attrs)=>{const n=document.createElementNS(NS,tag);for(const k in attrs)n.setAttribute(k,attrs[k]);return n;};
     const copy=$('.hero-copy'),base=copy.getBoundingClientRect(),r=letter.getBoundingClientRect();
     const sx=r.left-base.left+r.width/2,sy=r.top-base.top+r.height/2,w=r.width,h=r.height;
-    const minX=-base.left+w*.6,maxX=innerWidth-base.left-w*.6,cx=x=>clamp(x,minX,maxX);
-    const eng=$('.engine-center').getBoundingClientRect();
-    const h1=$('.hero h1').getBoundingClientRect();
+    const eng=$('.engine-center').getBoundingClientRect(),sig=$('.hero-signature').getBoundingClientRect();
     const wide=innerWidth>760&&eng.top>0&&eng.bottom<innerHeight;
-    let toShop,shopLoop,toClient,home,pick=null;
+    const gx=-Math.min(base.left*.5,60)+(wide?0:4);
+    let cx,cy,half,a,low;
     if(wide){
-      const C={x:eng.left-base.left+eng.width/2,y:eng.top-base.top+eng.height/2},R=eng.width/2+Math.max(30,eng.width*.14);
-      const sig=$('.hero-signature').getBoundingClientRect();
-      const low=Math.min(sig.bottom-base.top+34,innerHeight-base.top-30),gx=-Math.min(base.left*.5,60);
-      const Q={x:Math.min(base.width*.55,C.x-R*1.6),y:low};
-      toShop=`M${sx} ${sy}C${sx+w*1.6} ${sy-h*1.4} ${C.x-R*1.1} ${C.y-R} ${C.x} ${C.y-R}`;
-      shopLoop=`A${R} ${R} 0 0 1 ${C.x+R} ${C.y}A${R} ${R} 0 0 1 ${C.x} ${C.y+R}`;
-      toClient=`C${C.x-R*.9} ${C.y+R} ${Q.x+R*.9} ${low} ${Q.x} ${low}`;
-      home=`C${Q.x*.45} ${low} ${gx} ${low} ${gx} ${low-h*1.2}L${gx} ${sy+h*1.1}C${gx} ${sy+h*.2} ${gx+w*.2} ${sy} ${gx+w*1.2} ${sy}L${sx} ${sy}`;
-      pick=$('.engine-center');
+      // The S spans the whole art column, from the copy's edge to the right margin.
+      const art=$('.hero-art').getBoundingClientRect();
+      const leftX=Math.max(base.width+10,art.left-base.left),rightX=Math.min(art.right,innerWidth-24)-base.left-20;
+      cx=(leftX+rightX)/2;half=(rightX-leftX)/2;
+      const top=eng.top-base.top-eng.height*.22,bottom=eng.bottom-base.top+eng.height*.22;
+      cy=(top+bottom)/2;a=(bottom-top)/2;
+      low=Math.min(sig.bottom-base.top+34,innerHeight-base.top-26);
     }else{
-      const Q={x:cx(sx-w*1.5),y:sy+h*2.6};
-      toShop=`M${sx} ${sy}C${cx(sx+w*1.8)} ${sy-h*1.3} ${cx(sx+w*2.4)} ${sy+h*1.4} ${cx(sx+w*.6)} ${sy+h*2}`;
-      shopLoop='';
-      toClient=`C${cx(sx-w*.3)} ${sy+h*2.4} ${cx(Q.x+w*1.5)} ${Q.y} ${Q.x} ${Q.y}`;
-      home=`C${cx(Q.x-w*2.5)} ${Q.y} ${cx(sx-w*4)} ${sy} ${sx} ${sy}`;
+      cx=base.width*.5;half=base.width*.44;a=h*1.55;cy=sy+h*.75+a;
+      low=cy+a+h*.55;
     }
+    const k=1.3333,b=a/2;                          // each bowl is a half-ellipse of height a, width b
+    const xl=cx-half+b,xr=cx+half-b;              // where the straight strokes meet the bowls
+    const y1=cy-a,y3=cy+a,y0=y1-a*.4,curl=a*.2,xt=xr+b*.35;
+    const legs=[
+      `M${sx} ${sy}C${sx+w*1.3} ${sy} ${xt-a*1.2} ${y0} ${xt} ${y0}`,                 // hop out
+      `C${xt+curl*k} ${y0} ${xt+curl*k} ${y1} ${xt} ${y1}L${xl} ${y1}`,               // curl + top stroke
+      `C${xl-b*k} ${y1} ${xl-b*k} ${cy} ${xl} ${cy}`,                                  // left bowl
+      `L${xr} ${cy}`,                                                                   // middle stroke (pickup)
+      `C${xr+b*k} ${cy} ${xr+b*k} ${y3} ${xr} ${y3}`,                                  // right bowl
+      `C${xr-a*1.4} ${y3} ${Math.max(gx+w*3,xl-a)} ${low} ${Math.max(gx+w*1.5,xl-a*1.6)} ${low}`, // bottom stroke, easing down
+      `C${gx+w*.2} ${low} ${gx} ${low} ${gx} ${low-h*.9}L${gx} ${sy+h*.9}C${gx} ${sy+h*.2} ${gx+w*.25} ${sy} ${gx+w*1.1} ${sy}L${sx} ${sy}` // home
+    ];
     const svg=mk('svg',{class:'ride','aria-hidden':'true',width:'1',height:'1'});
-    const trail=mk('path',{class:'ride-trail',d:toShop+shopLoop+toClient+home,'stroke-width':clamp(h*.09,3.5,8).toFixed(1)});
+    const trail=mk('path',{class:'ride-trail','stroke-width':clamp(h*.085,3.5,8).toFixed(1)});
     const puffs=mk('g',{});
-    // The rider: a clone of the glyph, re-flipped into screen space, centred on its own origin.
     const bb=letter.getBBox();
     const rider=mk('g',{class:'ride-rider'}),lean=mk('g',{});
     const glyph=mk('svg',{viewBox:`${bb.x} ${-bb.y-bb.height} ${bb.width} ${bb.height}`,x:-w/2,y:-h/2,width:w,height:h,overflow:'visible'});
     const flip=mk('g',{transform:'scale(1,-1)'});const clone=letter.cloneNode(true);clone.removeAttribute('style');flip.append(clone);glyph.append(flip);
     const box=mk('rect',{class:'ride-box',x:-w*.27,y:-h*.5-w*.5,width:w*.54,height:w*.44,rx:w*.08});
     lean.append(box,glyph);rider.append(lean);svg.append(trail,puffs,rider);copy.append(svg);
-    const measure=d=>{trail.setAttribute('d',d);return trail.getTotalLength();};
-    const Lshop=measure(toShop),Lloop=measure(toShop+shopLoop),Lclient=measure(toShop+shopLoop+toClient),L=measure(toShop+shopLoop+toClient+home);
+    const cum=[];let d='';legs.forEach(l=>{d+=l;trail.setAttribute('d',d);cum.push(trail.getTotalLength());});
+    const L=cum[cum.length-1],pickAt=(cum[2]+cum[3])/2,dropAt=cum[4]+(cum[5]-cum[4])*.55;
     trail.style.strokeDasharray=`0 ${L+10}`;
     letter.style.opacity='0';
-    const D=wide?5600:4300,t0=performance.now();
-    let angle=0,face=1,lastPuff=0,picked=false,dropped=false,aborted=false;
+
+    const D=wide?3400:2800,TAIL0=.46,TAILD=.72;  // tail starts erasing at 46% and lands just after the rider parks
+    const sine=t=>.5-.5*Math.cos(Math.PI*clamp(t));
+    const look=Math.max(10,w*.35);
+    let angle=null,face=1,last=performance.now(),lastPuff=0,picked=false,dropped=false,parked=false,prevDist=0;
+    const t0=last;
     const finish=()=>{svg.remove();letter.style.removeProperty('opacity');};
-    function speedEase(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
     function pop(label,x,y){
       const tag=document.createElement('span');tag.className='ride-tag';tag.textContent=label;tag.setAttribute('aria-hidden','true');
       tag.style.left=x+'px';tag.style.top=y+'px';copy.append(tag);
-      tag.animate([{opacity:0,transform:'translate(-50%,0) scale(.6)'},{opacity:1,transform:'translate(-50%,-38px) scale(1)',offset:.25},{opacity:1,transform:'translate(-50%,-48px)',offset:.75},{opacity:0,transform:'translate(-50%,-70px)'}],{duration:1500,easing:'cubic-bezier(.16,1,.3,1)'}).finished.then(()=>tag.remove(),()=>tag.remove());
+      tag.animate([{opacity:0,transform:'translate(-50%,0) scale(.6)'},{opacity:1,transform:'translate(-50%,-34px) scale(1)',offset:.22},{opacity:1,transform:'translate(-50%,-44px)',offset:.72},{opacity:0,transform:'translate(-50%,-64px)'}],{duration:1300,easing:'cubic-bezier(.16,1,.3,1)'}).finished.then(()=>tag.remove(),()=>tag.remove());
     }
     function step(now){
-      if(!allowed()){aborted=true;finish();return;}
-      const t=clamp((now-t0)/D),s=speedEase(t),dist=s*L;
-      const p=trail.getPointAtLength(dist),q=trail.getPointAtLength(Math.min(L,dist+1.5)),b=trail.getPointAtLength(Math.max(0,dist-1.5));
-      const dx=q.x-b.x,dy=q.y-b.y;
-      if(Math.hypot(dx,dy)>.01){
-        const targetFace=dx<-.05?-1:dx>.05?1:face;
-        face+=(targetFace-face)*.14;
-        let a=Math.atan2(dy,dx*(targetFace))*180/Math.PI*targetFace;
-        a=clamp(a,-70,70);angle+=(a-angle)*.16;
+      if(!allowed()){finish();return;}
+      const dt=Math.min(50,now-last)||16;last=now;
+      const t=(now-t0)/D,dist=sine(t)*L,tail=sine((t-TAIL0)/TAILD)*L;
+      trail.style.strokeDasharray=`0 ${tail.toFixed(1)} ${Math.max(0,dist-tail).toFixed(1)} ${L+10}`;
+      if(!parked){
+        const p=trail.getPointAtLength(dist),q=trail.getPointAtLength(Math.min(L,dist+look)),o=trail.getPointAtLength(Math.max(0,dist-look));
+        const dx=q.x-o.x,dy=q.y-o.y;
+        // Critically damped turning: frame-rate independent smoothing.
+        const turn=1-Math.exp(-dt/70),flipK=1-Math.exp(-dt/110);
+        const targetFace=t>.97?1:dx<-1?-1:dx>1?1:face>0?1:-1;
+        face+=(targetFace-face)*flipK;
+        const target=t>.97?0:clamp(Math.atan2(dy,Math.abs(dx))*180/Math.PI*(targetFace),-62,62);
+        angle=angle===null?target:angle+(target-angle)*turn;
+        const speed=clamp((dist-prevDist)/dt/1.4);prevDist=dist;
+        const sxk=1+speed*.16,syk=1-speed*.07;
+        rider.setAttribute('transform',`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${angle.toFixed(2)})`);
+        lean.setAttribute('transform',`scale(${(face*sxk).toFixed(3)} ${syk.toFixed(3)})`);
+        if(now-lastPuff>55&&t>.04&&t<.94){
+          lastPuff=now;const back=trail.getPointAtLength(Math.max(0,dist-w*.5));
+          const c=mk('circle',{class:'ride-puff',cx:back.x.toFixed(1),cy:(back.y+h*.28).toFixed(1),r:(1.8+Math.random()*3).toFixed(1)});puffs.append(c);
+          c.animate([{opacity:.85,transform:'scale(1)'},{opacity:0,transform:`translate(${(-dx/look*14).toFixed(1)}px,${(-dy/look*14-6).toFixed(1)}px) scale(2.4)`}],{duration:560,easing:'cubic-bezier(.16,1,.3,1)'}).finished.then(()=>c.remove(),()=>c.remove());
+        }
+        if(!picked&&dist>=pickAt){
+          picked=true;rider.classList.add('loaded');
+          if(wide)$('.engine-center').animate([{scale:1},{scale:1.07},{scale:1}],{duration:480,easing:'cubic-bezier(.34,1.56,.64,1)'});
+        }
+        if(!dropped&&dist>=dropAt){dropped=true;rider.classList.remove('loaded');pop('+1 commande ↗',p.x,p.y-h*.55);}
+        if(t>=1){
+          parked=true;rider.remove();letter.style.removeProperty('opacity');
+          letter.animate([{transform:'scaleY(.86) scaleX(1.07)'},{transform:'scaleY(1.05) scaleX(.98)',offset:.5},{transform:'none'}],{duration:420,easing:'cubic-bezier(.33,1,.68,1)'});
+          letters.forEach((l,i)=>{if(l!==letter)l.animate([{transform:'none'},{transform:'translateY(6%)'},{transform:'none'}],{duration:420,delay:Math.abs(i-index)*45,easing:'cubic-bezier(.45,0,.55,1)'});});
+        }
       }
-      if(t>.97){angle*=.7;face+=(1-face)*.3;}
-      const bump=Math.sin(now/38)*Math.min(1.6,(s*(1-s))*12);
-      rider.setAttribute('transform',`translate(${p.x.toFixed(1)} ${(p.y+bump).toFixed(1)}) rotate(${angle.toFixed(2)})`);
-      lean.setAttribute('transform',`scale(${face.toFixed(3)} 1)`);
-      trail.style.strokeDasharray=`${dist.toFixed(1)} ${L+10}`;
-      if(now-lastPuff>70&&t>.02&&t<.96){
-        lastPuff=now;const back=trail.getPointAtLength(Math.max(0,dist-w*.45));
-        const c=mk('circle',{class:'ride-puff',cx:back.x.toFixed(1),cy:(back.y+h*.3).toFixed(1),r:(2+Math.random()*3.5).toFixed(1)});puffs.append(c);
-        c.animate([{opacity:.95,transform:'scale(1)'},{opacity:0,transform:`translate(${(-Math.cos(angle*Math.PI/180)*face*16).toFixed(1)}px,-10px) scale(2.6)`}],{duration:650,easing:'ease-out'}).finished.then(()=>c.remove(),()=>c.remove());
-      }
-      if(!picked&&dist>=(pick?Lloop*.5+Lshop*.5:Lshop)){
-        picked=true;rider.classList.add('loaded');
-        if(pick)pick.animate([{scale:1},{scale:1.08},{scale:1}],{duration:520,easing:'cubic-bezier(.34,1.56,.64,1)'});
-      }
-      if(!dropped&&dist>=Lclient){dropped=true;rider.classList.remove('loaded');pop('+1 commande ↗',p.x,p.y-h*.6);}
-      if(t<1)requestAnimationFrame(step);else park();
-    }
-    function park(){
-      if(aborted)return;
-      rider.remove();letter.style.removeProperty('opacity');
-      letter.animate([{transform:'scaleY(.72) scaleX(1.18)'},{transform:'scaleY(1.12) scaleX(.94)',offset:.45},{transform:'none'}],{duration:520,easing:'cubic-bezier(.34,1.56,.64,1)'});
-      letters.forEach((l,i)=>{if(l!==letter)l.animate([{transform:'none'},{transform:'translateY(9%)'},{transform:'none'}],{duration:480,delay:Math.abs(i-index)*60,easing:'ease-in-out'});});
-      // Retract the trail from its start, chasing the letter home.
-      const r0=performance.now(),RD=1300;
-      (function retract(now){
-        if(!allowed()){finish();return;}
-        const u=clamp((now-r0)/RD),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2,start=e*L;
-        trail.style.strokeDasharray=`0 ${start.toFixed(1)} ${(L-start).toFixed(1)} ${L+10}`;
-        if(u<1)requestAnimationFrame(retract);else finish();
-      })(r0);
+      if(t<TAIL0+TAILD)requestAnimationFrame(step);else finish();
     }
     requestAnimationFrame(step);
   }
@@ -205,12 +209,16 @@
   if(allowed()&&canWAAPI&&!seen){
     try{sessionStorage.setItem('zeste-intro','1');}catch(e){}
     const intro=document.createElement('div');intro.className='zeste-intro';intro.setAttribute('aria-hidden','true');
-    intro.innerHTML='<div class="intro-meta"><span>WE TURN DELIVERY INTO PROFIT.</span><b class="intro-count">0 %</b></div><i class="intro-bar"></i>';
+    intro.innerHTML='<div class="intro-inner"><div class="intro-meta"><span>WE TURN DELIVERY INTO PROFIT.</span><b class="intro-count">0 %</b></div><i class="intro-bar"></i></div>';
     body.append(intro);doc.classList.add('intro-lock');
     const count=$('.intro-count',intro),bar=$('.intro-bar',intro),t0=performance.now();
-    (function tick(now){const t=clamp((now-t0)/850);count.textContent=Math.round(ease(t)*100)+' %';bar.style.transform='scaleX('+ease(t)+')';if(t<1&&intro.isConnected)requestAnimationFrame(tick);})(t0);
-    const exit=intro.animate([{clipPath:'inset(0 0 0 0)'},{clipPath:'inset(0 0 100% 0)'}],{duration:800,delay:950,easing:'cubic-bezier(.76,0,.24,1)',fill:'forwards'});
-    setTimeout(heroIn,1250);
+    (function tick(now){const t=clamp((now-t0)/800);count.textContent=Math.round(ease(t)*100)+' %';bar.style.transform='scaleX('+ease(t)+')';if(t<1&&intro.isConnected)requestAnimationFrame(tick);})(t0);
+    // The curtain lifts with a curved, melting edge while the hero settles underneath.
+    const lift={duration:1000,delay:850,easing:'cubic-bezier(.7,0,.2,1)',fill:'forwards'};
+    const exit=intro.animate([{transform:'translateY(0)',borderBottomLeftRadius:'0 0',borderBottomRightRadius:'0 0'},{transform:'translateY(-100%)',borderBottomLeftRadius:'50% 22vh',borderBottomRightRadius:'50% 22vh',offset:.7},{transform:'translateY(-118%)',borderBottomLeftRadius:'50% 30vh',borderBottomRightRadius:'50% 30vh'}],lift);
+    $('.intro-inner',intro).animate([{transform:'none',opacity:1},{transform:'translateY(-30vh)',opacity:0}],{...lift,duration:700});
+    hero.animate([{transform:'translateY(12vh) scale(.96)',filter:'blur(6px)'},{transform:'none',filter:'blur(0)'}],{duration:1300,delay:850,easing:'cubic-bezier(.16,1,.3,1)',fill:'backwards'});
+    setTimeout(heroIn,1050);
     const done=()=>{intro.remove();doc.classList.remove('intro-lock');};
     exit.finished.then(done,done);setTimeout(done,2600);
   }else{heroIn();}
