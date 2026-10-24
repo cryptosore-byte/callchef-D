@@ -192,6 +192,7 @@
         if(!picked&&dist>=pickAt){
           picked=true;rider.classList.add('loaded');
           if(wide)$('.engine-center').animate([{scale:1},{scale:1.07},{scale:1}],{duration:480,easing:'cubic-bezier(.34,1.56,.64,1)'});
+          dispatchEvent(new CustomEvent('zeste:pickup'));
         }
         if(!dropped&&dist>=dropAt){dropped=true;rider.classList.remove('loaded');pop('+1 commande ↗\ufe0e',p.x,p.y-h*.55);}
         if(t>=1){

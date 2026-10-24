@@ -11,6 +11,8 @@
 > |-------|----------------------------------|
 > | Mettre le site à jour | `bash /opt/zeste/deploy/update.sh` |
 > | Activer / changer le formulaire | `nano /etc/zeste/zeste.env` puis `bash /opt/zeste/deploy/update.sh --restart` |
+> | Revenir à la version d'avant la dernière mise à jour | `bash /opt/zeste/deploy/update.sh --rollback` |
+> | Revenir au site d'avant la scène 3D (commit `35d7b1a`) | `bash /opt/zeste/deploy/update.sh --version 35d7b1a54f87ef18dc30eee0c57386f58c173a67` |
 > | Voir les erreurs | `docker logs --tail 30 zeste-site` |
 > | Après toute modification de `/root/sel-crm/Caddyfile` | `docker restart sel-crm-caddy-1` (un simple *reload* peut ne pas voir le fichier si un éditeur l'a remplacé) |
 >
