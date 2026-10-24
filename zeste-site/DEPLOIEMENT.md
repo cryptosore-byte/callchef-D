@@ -1,5 +1,23 @@
 # Mettre Zeste en ligne sur ton VPS Hostinger
 
+> **Installation en place sur ton VPS (zeste.delivery)**
+>
+> Ton VPS fait déjà tourner un Caddy dans Docker (`sel-crm-caddy-1`) qui gère les ports 80/443 pour le CRM.
+> Zeste tourne donc dans son propre conteneur `zeste-site`, sur le réseau `sel-crm_default`, et le bloc
+> `zeste.delivery` a été ajouté à la fin de `/root/sel-crm/Caddyfile` (sauvegarde : `Caddyfile.avant-zeste`).
+> `install.sh` (ci-dessous) ne sert plus sur ce VPS.
+>
+> | Pour… | Commande (Web console, en root) |
+> |-------|----------------------------------|
+> | Mettre le site à jour | `bash /opt/zeste/deploy/update.sh` |
+> | Activer / changer le formulaire | `nano /etc/zeste/zeste.env` puis `bash /opt/zeste/deploy/update.sh --restart` |
+> | Voir les erreurs | `docker logs --tail 30 zeste-site` |
+>
+> La toute première fois, `update.sh` n'est pas encore sur le VPS :
+> `curl -fsSL https://raw.githubusercontent.com/cryptosore-byte/callchef-D/claude/clever-heisenberg-zh277j/zeste-site/deploy/update.sh | bash`
+
+## Installation sur un VPS vierge
+
 Environ 15 minutes. Remplace partout `tondomaine.fr` par ton vrai domaine et `IP_DU_VPS` par l'adresse IP de ton VPS (affichée dans hPanel → VPS).
 
 Ce que ça installe : le site, le formulaire de contact (envoi par e-mail), le HTTPS automatique (Caddy, certificat gratuit renouvelé tout seul) et un service qui redémarre automatiquement si le VPS redémarre.
