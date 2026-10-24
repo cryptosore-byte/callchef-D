@@ -145,4 +145,4 @@ footer{position:relative;overflow:hidden}.footer-bottom{order:11}
 .engine.is-3d :is(.engine-halo,.engine-orbit,.engine-center){visibility:hidden}
 .engine.is-3d .engine-chip{z-index:3}
 @media(max-width:760px){.scene3d{inset:-10%}}
-@media(max-width:760px){.engine.is-3d .engine-chip{display:none}}
+.engine.is-3d :is(.engine-chip,.engine-caption){display:none}
