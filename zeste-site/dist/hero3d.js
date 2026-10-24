@@ -208,14 +208,14 @@ function init() {
     const draw = () => {
       const font = '700 44px "DM Sans", Arial, sans-serif', nfont = '700 34px "DM Sans", Arial, sans-serif';
       g.font = font;
-      const w = small ? 96 : Math.ceil(g.measureText(text).width) + 132; cv.width = w; cv.height = 96;
+      const w = Math.ceil(g.measureText(text).width) + 132; cv.width = w; cv.height = 96;
       g.fillStyle = dark ? '#050706' : '#f3faf7'; g.beginPath(); g.roundRect(2, 2, w - 4, 92, 46); g.fill();
       g.lineWidth = 3; g.strokeStyle = dark ? '#8fd8bd55' : '#05070622'; g.stroke();
       g.fillStyle = dark ? '#8fd8bd' : '#050706'; g.beginPath(); g.arc(48, 48, 32, 0, Math.PI * 2); g.fill();
       g.font = nfont; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = dark ? '#050706' : '#8fd8bd'; g.fillText(num, 48, 50);
-      if (!small) { g.font = font; g.textAlign = 'left'; g.fillStyle = dark ? '#f3faf7' : '#050706'; g.fillText(text, 96, 50); }
+      g.font = font; g.textAlign = 'left'; g.fillStyle = dark ? '#f3faf7' : '#050706'; g.fillText(text, 96, 50);
       sprite.material.map?.dispose(); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; sprite.material.map = t; sprite.material.needsUpdate = true;
-      const k = small ? 1.8 : 0.9; sprite.userData.base = [(w / 96) * k, k]; sprite.scale.set((w / 96) * k, k, 1);
+      const k = small ? 1.55 : 0.9; sprite.userData.base = [(w / 96) * k, k]; sprite.scale.set((w / 96) * k, k, 1);
     };
     sprite.position.set(x, y, z); sprite.center.set(0.5, 0); sprite.renderOrder = 10; scene.add(sprite);
     sprite.userData.pillar = 'pillar-' + num;
@@ -288,7 +288,7 @@ function init() {
     g.add(hh, mh); scene.add(g); hands.push([hh, mh]);
   });
   add(place(new THREE.ConeGeometry(0.95, 0.7, 4), CB.x + 1.02, Y0 + cH + 0.5, CB.z - 1.02, Math.PI / 4), HEX.deep);
-  label('10', 'Support 7j/7', CB.x + 1.02, Y0 + cH + 1.0, CB.z - 1.02, true);
+  label('10', 'Support 7j/7', small ? CB.x + 0.3 : CB.x + 1.02, Y0 + cH + (small ? 0.55 : 1.0), CB.z - 1.02, true);
 
   /* 04 Menu & conversion: the diner itself */
   label('04', 'Menu & conversion', D.x, burgerBase + 2.05, D.z - 0.45, true);
@@ -310,7 +310,7 @@ function init() {
   const mast = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), std(HEX.ink)); mast.position.y = -0.75;
   screen.add(bezel, panel, mast); screen.traverse(m => { if (m.isMesh) m.castShadow = true; });
   screen.position.set(1.02, dTop + 1.0, -4.73); screen.rotation.y = 0.68; scene.add(screen);
-  label('01', 'Business & data', 0.1, dTop + 1.6, -4.3);
+  label('01', 'Business & data', small ? -2.2 : 0.1, dTop + 1.6, small ? -4.9 : -4.3);
 
   /* 03 Unit economics: a spinning 3D pie of where each euro goes */
   const uTop = spot(-6.77, 1.02, 1.7, 1.9, 1.7, HEX.cream);
@@ -320,7 +320,7 @@ function init() {
     m.castShadow = true; m.userData.mid = (start + part / 2) * Math.PI * 2; pie.add(m); slices.push(m); return start + part;
   }, 0);
   pie.position.set(-6.77, uTop + 0.55, 1.02); pie.rotation.x = 0.35; scene.add(pie);
-  label('03', 'Unit economics', -6.77, uTop + 1.2, 1.02);
+  label('03', 'Unit economics', -6.77, uTop + (small ? 1.9 : 1.2), small ? 0.4 : 1.02);
 
   /* 05 Négociation: two speech bubbles talking */
   const nTop = spot(-1.02, 4.73, 1.6, 1.3, 1.6, HEX.light);
@@ -465,7 +465,7 @@ function init() {
   });
   function frameCamera(time) {
     mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
-    const az = 0.68 + Math.sin(time * 0.00005) * 0.16 + mx * 0.4, el = 0.66 - my * 0.1, dist = small ? 60 : 59;
+    const az = 0.68 + Math.sin(time * 0.00005) * 0.16 + mx * 0.4, el = (small ? 0.84 : 0.66) - my * 0.1, dist = small ? 55 : 59;
     camera.position.set(Math.sin(az) * Math.cos(el) * dist, Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
     camera.lookAt(look);
   }

@@ -49,3 +49,6 @@
 .price-digital .button .arr{background:var(--ink);color:var(--butter)}
 header>.button .arr{width:26px;height:26px;margin:-4px -6px -4px 0;font-size:13px}
 .chip-icon .ico-arrow{width:15px;height:15px;stroke:currentColor;stroke-width:2.2;vertical-align:0;display:block}.initials b .ico-arrow,.savings-strip>span .ico-arrow{stroke-width:1.6}.expert-tab b .ico-arrow{font-size:14px}
+/* Platform logos in their own colours */
+.platform{color:var(--brand)}.platform svg{fill:var(--mark,currentColor)}.platform:hover{color:var(--brand)}
+.pf-uber{color:var(--ink)}
