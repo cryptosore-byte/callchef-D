@@ -34,8 +34,8 @@ function init() {
   const wrap = document.createElement('div');
   wrap.className = 'scene3d'; wrap.setAttribute('aria-hidden', 'true');
   let renderer;
-  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' }); } catch (e) { return; }
-  if (!renderer.getContext()) return;
+  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' }); } catch (e) { return fallback(); }
+  if (!renderer.getContext()) return fallback();
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, small ? 1.5 : 2));
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -126,13 +126,13 @@ function init() {
     });
   }
   const B = (x, z) => blocks.find(b => b.x === x && b.z === z);
-  fillBlock(B(0, 5.75), 0.7, 1.2);
-  fillBlock(B(5.75, 0), 0.9, 1.6, [1]);
-  fillBlock(B(-5.75, 0), 0.9, 1.7);
+  fillBlock(B(0, 5.75), 0.7, 1.2, [0]);
+  fillBlock(B(5.75, 0), 0.9, 1.6, [1, 3]);
+  fillBlock(B(-5.75, 0), 0.9, 1.7, [2]);
   fillBlock(B(-5.75, 5.75), 0.8, 1.4, [1]);
-  fillBlock(B(0, -5.75), 2.4, 3.8);
+  fillBlock(B(0, -5.75), 2.4, 3.8, [3]);
   fillBlock(B(5.75, -5.75), 2.8, 4.4, [2]);
-  fillBlock(B(-5.75, -5.75), 2.6, 4.2, [3]);
+  fillBlock(B(-5.75, -5.75), 2.6, 4.2, [0, 3]);
 
   // Park in the front-right block, trees along the ring road
   const park = B(5.75, 5.75);
@@ -200,33 +200,29 @@ function init() {
   add(place(new THREE.CylinderGeometry(0.06, 0.09, 0.62, 10), D.x, Y0 + 1.95, D.z - 0.45), HEX.ink);
   add(place(new THREE.CylinderGeometry(0.75, 0.85, 0.08, 32), D.x, Y0 + 1.66, D.z - 0.45), HEX.deep);
 
-  /* Labels: pill sprites, redrawn once the web font is ready */
-  const icons = {
-    up: g => { g.moveTo(-12, 12); g.lineTo(12, -12); g.moveTo(-3, -12); g.lineTo(12, -12); g.lineTo(12, 3); },
-    check: g => { g.moveTo(-13, 0); g.lineTo(-4, 9); g.lineTo(13, -9); },
-    plus: g => { g.moveTo(0, -13); g.lineTo(0, 13); g.moveTo(-13, 0); g.lineTo(13, 0); },
-    clock: g => { g.arc(0, 0, 13, 0, Math.PI * 2); g.moveTo(0, -7); g.lineTo(0, 0); g.lineTo(6, 4); }
-  };
+  /* Expertise labels: numbered pills (badge only on phones), clickable to open the detailed expertise */
   const labels = [];
-  function label(text, icon, x, y, z, dark = false) {
+  function label(num, text, x, y, z, dark = false) {
     const cv = document.createElement('canvas'), g = cv.getContext('2d');
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
     const draw = () => {
-      g.font = '700 46px "DM Sans", Arial, sans-serif';
-      const w = Math.ceil(g.measureText(text).width) + 150; cv.width = w; cv.height = 96;
-      g.font = '700 46px "DM Sans", Arial, sans-serif';
+      const font = '700 44px "DM Sans", Arial, sans-serif', nfont = '700 34px "DM Sans", Arial, sans-serif';
+      g.font = font;
+      const w = small ? 96 : Math.ceil(g.measureText(text).width) + 132; cv.width = w; cv.height = 96;
       g.fillStyle = dark ? '#050706' : '#f3faf7'; g.beginPath(); g.roundRect(2, 2, w - 4, 92, 46); g.fill();
-      g.fillStyle = dark ? '#8fd8bd' : '#050706'; g.beginPath(); g.arc(50, 48, 31, 0, Math.PI * 2); g.fill();
-      g.save(); g.translate(50, 48); g.strokeStyle = dark ? '#050706' : '#8fd8bd'; g.lineWidth = 5.5; g.lineCap = g.lineJoin = 'round';
-      g.beginPath(); icons[icon](g); g.stroke(); g.restore();
-      g.fillStyle = dark ? '#f3faf7' : '#050706'; g.textBaseline = 'middle'; g.fillText(text, 98, 51);
+      g.lineWidth = 3; g.strokeStyle = dark ? '#8fd8bd55' : '#05070622'; g.stroke();
+      g.fillStyle = dark ? '#8fd8bd' : '#050706'; g.beginPath(); g.arc(48, 48, 32, 0, Math.PI * 2); g.fill();
+      g.font = nfont; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = dark ? '#050706' : '#8fd8bd'; g.fillText(num, 48, 50);
+      if (!small) { g.font = font; g.textAlign = 'left'; g.fillStyle = dark ? '#f3faf7' : '#050706'; g.fillText(text, 96, 50); }
       sprite.material.map?.dispose(); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; sprite.material.map = t; sprite.material.needsUpdate = true;
-      const k = small ? 1.35 : 0.95; sprite.scale.set((w / 96) * k, k, 1);
+      const k = small ? 1.8 : 0.9; sprite.userData.base = [(w / 96) * k, k]; sprite.scale.set((w / 96) * k, k, 1);
     };
-    sprite.position.set(x, y, z); sprite.center.set(0.5, 0); scene.add(sprite);
+    sprite.position.set(x, y, z); sprite.center.set(0.5, 0); sprite.renderOrder = 10; scene.add(sprite);
+    sprite.userData.pillar = 'pillar-' + num;
     draw(); (document.fonts?.ready || Promise.resolve()).then(draw);
-    labels.push({ sprite, y, phase: labels.length });
+    labels.push({ sprite, y, phase: labels.length, hover: 0 });
   }
+  const spot = (x, z, w, h, d, hex) => tower(x, z, w, h, d, hex);
 
   /* Rentabilité: rising bar chart and a spinning euro coin */
   const RB = B(5.75, -5.75), rTop = tower(RB.x - 1.0, RB.z + 1.0, 1.9, 3.1, 1.9, HEX.cream);
@@ -243,7 +239,7 @@ function init() {
   const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.1, 40), [std(HEX.amber, { metalness: 0.5, roughness: 0.3 }), std(0xffffff, { map: coinFace, metalness: 0.4, roughness: 0.35 }), std(0xffffff, { map: coinFace, metalness: 0.4, roughness: 0.35 })]);
   coin.rotation.x = Math.PI / 2; coin.castShadow = true; coin.scale.setScalar(1.45);
   const coinPivot = new THREE.Group(); coinPivot.add(coin); coinPivot.position.set(RB.x - 0.45, rTop + 1.75, RB.z + 1.0); scene.add(coinPivot);
-  label('Rentabilité', 'up', RB.x - 1.0, rTop + 2.45, RB.z + 1.0);
+  label('02', 'Croissance rentable', RB.x + 0.2, rTop + 3.15, RB.z + 0.6);
 
   /* Contrôle qualité: shield with a check mark and five stars */
   const QB = B(-5.75, -5.75), qTop = tower(QB.x + 1.0, QB.z + 1.0, 1.9, 2.6, 1.9, HEX.light);
@@ -263,7 +259,7 @@ function init() {
     const s = new THREE.Mesh(starGeo, std(HEX.amber, { metalness: 0.3, roughness: 0.3 }));
     s.position.set(QB.x + 1.0 + (i - 2) * 0.42, qTop + 1.95 - Math.abs(i - 2) * 0.06, QB.z + 1.0); s.castShadow = true; scene.add(s); return s;
   });
-  label('Contrôle qualité', 'check', QB.x + 1.0, qTop + 2.35, QB.z + 1.0);
+  label('06', 'Avis & réputation', QB.x + 1.0, qTop + 2.35, QB.z + 1.0);
 
   /* Plus de volume: a stack of delivery boxes that keeps growing */
   const VB = { x: 5.75 + 2.04, z: 0 }, vTop = tower(VB.x - 1.0, VB.z - 1.0, 1.9, 2.0, 1.9, HEX.sage);
@@ -271,7 +267,7 @@ function init() {
   const slots = []; [0, 1, 2].forEach(l => { const n = 3 - l; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) slots.push([(i - (n - 1) / 2) * 0.46, l * 0.37, (j - (n - 1) / 2) * 0.46]); });
   const parcels = slots.map((s, i) => { const m = new THREE.Mesh(boxGeo, boxMat[i % 2]); m.castShadow = true; m.visible = false; scene.add(m); return { m, s, t: -1 }; });
   let stackT = 0, stackN = 0;
-  label('+ de volume', 'plus', VB.x - 1.0, vTop + 1.45, VB.z - 1.0, true);
+  label('09', 'Délégation', VB.x - 1.0, vTop + 1.45, VB.z - 1.0, true);
 
   /* 7j/7: clock tower with fast hands */
   const CB = B(-5.75, 5.75), cH = 3.6;
@@ -292,7 +288,75 @@ function init() {
     g.add(hh, mh); scene.add(g); hands.push([hh, mh]);
   });
   add(place(new THREE.ConeGeometry(0.95, 0.7, 4), CB.x + 1.02, Y0 + cH + 0.5, CB.z - 1.02, Math.PI / 4), HEX.deep);
-  label('7j/7', 'clock', CB.x + 1.02, Y0 + cH + 1.0, CB.z - 1.02, true);
+  label('10', 'Support 7j/7', CB.x + 1.02, Y0 + cH + 1.0, CB.z - 1.02, true);
+
+  /* 04 Menu & conversion: the diner itself */
+  label('04', 'Menu & conversion', D.x, burgerBase + 2.05, D.z - 0.45, true);
+
+  /* 01 Business & data: a rooftop dashboard */
+  const dTop = spot(1.02, -4.73, 1.8, 2.7, 1.8, HEX.deep);
+  const dashTex = (() => {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 320; const g = c.getContext('2d');
+    g.fillStyle = '#050706'; g.beginPath(); g.roundRect(0, 0, 512, 320, 28); g.fill();
+    g.strokeStyle = '#24644f'; g.lineWidth = 2; for (let y = 70; y < 300; y += 55) { g.beginPath(); g.moveTo(30, y); g.lineTo(482, y); g.stroke(); }
+    g.fillStyle = '#24644f'; [90, 140, 120, 190].forEach((h, i) => g.fillRect(50 + i * 110, 290 - h, 60, h));
+    g.strokeStyle = '#8fd8bd'; g.lineWidth = 10; g.lineJoin = 'round'; g.beginPath(); [[40, 250], [140, 205], [250, 225], [350, 140], [470, 70]].forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke();
+    g.fillStyle = '#8fd8bd'; g.beginPath(); g.arc(470, 70, 16, 0, Math.PI * 2); g.fill();
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const screen = new THREE.Group();
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0), new THREE.MeshStandardMaterial({ map: dashTex, emissive: 0xffffff, emissiveMap: dashTex, emissiveIntensity: 0.7, roughness: 0.4 }));
+  const bezel = new THREE.Mesh(new RoundedBoxGeometry(1.72, 1.12, 0.08, 2, 0.04), std(HEX.ink)); bezel.position.z = -0.05;
+  const mast = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), std(HEX.ink)); mast.position.y = -0.75;
+  screen.add(bezel, panel, mast); screen.traverse(m => { if (m.isMesh) m.castShadow = true; });
+  screen.position.set(1.02, dTop + 1.0, -4.73); screen.rotation.y = 0.68; scene.add(screen);
+  label('01', 'Business & data', 0.1, dTop + 1.6, -4.3);
+
+  /* 03 Unit economics: a spinning 3D pie of where each euro goes */
+  const uTop = spot(-6.77, 1.02, 1.7, 1.9, 1.7, HEX.cream);
+  const pie = new THREE.Group(), slices = [];
+  [[0.32, HEX.ink], [0.25, HEX.deep], [0.1, HEX.amber], [0.15, HEX.mauve], [0.18, HEX.mint]].reduce((start, [part, hex], i) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, i === 4 ? 0.3 : 0.2, 32, 1, false, start * Math.PI * 2, part * Math.PI * 2), std(hex, { roughness: 0.45 }));
+    m.castShadow = true; m.userData.mid = (start + part / 2) * Math.PI * 2; pie.add(m); slices.push(m); return start + part;
+  }, 0);
+  pie.position.set(-6.77, uTop + 0.55, 1.02); pie.rotation.x = 0.35; scene.add(pie);
+  label('03', 'Unit economics', -6.77, uTop + 1.2, 1.02);
+
+  /* 05 Négociation: two speech bubbles talking */
+  const nTop = spot(-1.02, 4.73, 1.6, 1.3, 1.6, HEX.light);
+  const bubble = (hex, flip) => {
+    const g = new THREE.Group();
+    const b = new THREE.Mesh(new RoundedBoxGeometry(0.78, 0.48, 0.16, 3, 0.14), std(hex)); g.add(b);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 8), std(hex)); tail.position.set(flip * 0.22, -0.3, 0); tail.rotation.z = Math.PI + flip * 0.5; g.add(tail);
+    [-0.2, 0, 0.2].forEach(dx => { const d = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), std(hex === HEX.ink ? HEX.mint : HEX.ink)); d.position.set(dx, 0, 0.09); g.add(d); });
+    g.traverse(m => { if (m.isMesh) m.castShadow = true; }); g.rotation.y = 0.68; scene.add(g); return g;
+  };
+  const talk = [bubble(HEX.cream, -1), bubble(HEX.ink, 1)];
+  label('05', 'Négociation', -1.02, nTop + 1.55, 4.73);
+
+  /* 07 Remboursements: a circular arrow bringing a coin back */
+  const bTop = spot(6.77, 1.02, 1.6, 1.3, 1.6, HEX.cream);
+  const refund = new THREE.Group();
+  const arc = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 10, 48, Math.PI * 1.55), std(HEX.deep));
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 14), std(HEX.deep));
+  head.position.set(Math.cos(Math.PI * 1.55) * 0.5, Math.sin(Math.PI * 1.55) * 0.5, 0); head.rotation.z = Math.PI * 1.55;
+  const refundCoin = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.07, 32), [std(HEX.amber, { metalness: 0.5, roughness: 0.3 }), std(0xffffff, { map: coinFace }), std(0xffffff, { map: coinFace })]);
+  refundCoin.rotation.x = Math.PI / 2;
+  refund.add(arc, head, refundCoin); refund.traverse(m => { if (m.isMesh) m.castShadow = true; });
+  refund.position.set(6.77, bTop + 0.75, 1.02); refund.rotation.y = 0.68; scene.add(refund);
+  label('07', 'Remboursements', 6.77, bTop + 1.45, 1.02);
+
+  /* 08 Intelligence marché: a rotating radar dish with scan pulses */
+  const iTop = spot(-6.77, -6.77, 1.6, 3.3, 1.6, HEX.sage);
+  const radar = new THREE.Group();
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(0.55, 28, 12, 0, Math.PI * 2, 0, Math.PI / 3.2), std(HEX.cream, { side: THREE.DoubleSide, roughness: 0.4 }));
+  dish.rotation.x = Math.PI * 0.7; dish.position.y = 0.45;
+  const horn = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8), std(HEX.ink)); horn.position.set(0, 0.55, 0.12); horn.rotation.x = Math.PI * 0.2;
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.45, 10), std(HEX.ink)); post.position.y = 0.2;
+  radar.add(dish, horn, post); radar.traverse(m => { if (m.isMesh) m.castShadow = true; });
+  radar.position.set(-6.77, iTop, -6.77); scene.add(radar);
+  label('08', 'Intelligence marché', -6.77, iTop + 1.25, -6.77);
+  let nextScan = 0;
 
   /* Vehicles follow rounded rectangle loops that all pass in front of the diner (z = +STREET) */
   function loop(x0, z0, x1, z1, r = 0.75) {
@@ -375,6 +439,30 @@ function init() {
   const art = document.querySelector('.hero-art');
   art.addEventListener('pointermove', e => { if (e.pointerType !== 'mouse') return; const r = engine.getBoundingClientRect(); tx = (e.clientX - r.left) / r.width - 0.5; ty = (e.clientY - r.top) / r.height - 0.5; });
   art.addEventListener('pointerleave', () => { tx = ty = 0; });
+  // Labels are clickable: pick them from the hero column (the canvas itself never blocks the page)
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function pick(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(labels.map(l => l.sprite), false)[0];
+    return hit && labels.find(l => l.sprite === hit.object);
+  }
+  let hovered = null;
+  art.addEventListener('pointermove', e => {
+    const l = pick(e); if (l === hovered) return;
+    if (hovered) hovered.hover = 0; hovered = l || null; if (hovered) hovered.hover = 1;
+    art.style.cursor = hovered ? 'pointer' : ''; wake();
+  });
+  art.addEventListener('click', e => {
+    const l = pick(e); if (!l) return;
+    e.preventDefault();
+    const id = l.sprite.userData.pillar, details = document.querySelector('.expertise-disclosure');
+    if (details) details.open = true;
+    history.replaceState(null, '', '#' + id);
+    dispatchEvent(new HashChangeEvent('hashchange'));
+    requestAnimationFrame(() => (document.querySelector('.expert-workspace') || document.getElementById(id))?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  });
   function frameCamera(time) {
     mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
     const az = 0.68 + Math.sin(time * 0.00005) * 0.16 + mx * 0.4, el = 0.66 - my * 0.1, dist = small ? 60 : 59;
@@ -429,7 +517,17 @@ function init() {
       p.m.visible = true; p.m.position.set(VB.x - 1.0 + p.s[0], vTop + 0.18 + p.s[1] + (1 - e) * 2.2, VB.z - 1.0 + p.s[2]); p.m.rotation.y = (1 - e) * 1.2;
     });
     hands.forEach(([hh, mh]) => { mh.rotation.z = -time * 0.0016; hh.rotation.z = -time * 0.00013; });
-    labels.forEach(l => { l.sprite.position.y = l.y + Math.sin(time * 0.0016 + l.phase) * 0.06; });
+    labels.forEach(l => {
+      l.sprite.position.y = l.y + Math.sin(time * 0.0016 + l.phase) * 0.06;
+      const k = 1 + l.hover * 0.14, [bw, bh] = l.sprite.userData.base || [1, 1]; l.sprite.scale.set(bw * k, bh * k, 1);
+    });
+    screen.position.y = dTop + 1.0 + Math.sin(time * 0.0014) * 0.05; panel.material.emissiveIntensity = 0.6 + Math.sin(time * 0.004) * 0.12;
+    pie.rotation.y += s * 0.6;
+    const pop = Math.max(0, Math.sin(time * 0.0019)) ** 3; const m4 = slices[4], a4 = m4.userData.mid; m4.position.set(Math.sin(a4) * pop * 0.22, 0.05 * pop, Math.cos(a4) * pop * 0.22);
+    talk.forEach((b, i) => { const ph = time * 0.003 + i * Math.PI; b.position.set(-1.02 + (i ? 0.38 : -0.38), nTop + 0.55 + i * 0.32 + Math.max(0, Math.sin(ph)) * 0.18, 4.73); b.scale.setScalar(0.9 + Math.max(0, Math.sin(ph)) * 0.15); });
+    refund.rotation.z = -time * 0.0018;
+    radar.rotation.y = time * 0.0011;
+    if (time > nextScan) { ring(-6.77, -6.77, HEX.deep, 0.5); rings[rings.length - 1].r.position.y = iTop + 0.02; nextScan = time + 1700; }
     if (time > nextRing) { ring(D.x, D.z + 1.6, HEX.mint); nextRing = time + 2400; }
     for (let i = rings.length - 1; i >= 0; i--) {
       const r = rings[i]; r.life += s / 1.7; r.r.scale.setScalar(r.s * (0.7 + r.life * 2.6)); r.r.material.opacity = 0.8 * (1 - r.life);
@@ -470,4 +568,6 @@ function init() {
   requestAnimationFrame(() => { resize(); wrap.classList.add('on'); wake(); });
 }
 
-try { init(); } catch (e) { console.error(e); engine && engine.classList.remove('is-3d'); document.querySelector('.scene3d')?.remove(); }
+// Without the 3D scene, bring back the 2D engine that index.html hid while waiting for it.
+function fallback() { engine?.classList.remove('is-3d'); engine?.classList.add('no-3d'); document.querySelector('.scene3d')?.remove(); }
+try { init(); } catch (e) { console.error(e); fallback(); }
