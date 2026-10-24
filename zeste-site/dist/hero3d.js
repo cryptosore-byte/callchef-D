@@ -36,8 +36,9 @@ function init() {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' }); } catch (e) { return fallback(); }
   if (!renderer.getContext()) return fallback();
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, small ? 1.5 : 2));
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Resolution is capped (see resize): a hi-dpi desktop canvas would otherwise push ~3 million pixels a frame.
+  let dprCap = Math.min(devicePixelRatio || 1, 1.5);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.05;
   wrap.append(renderer.domElement); engine.prepend(wrap); engine.classList.add('is-3d');
@@ -54,7 +55,7 @@ function init() {
   scene.add(new THREE.HemisphereLight(0xffffff, HEX.mint, 0.55));
   const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
   sun.position.set(9, 18, 7); sun.castShadow = true;
-  sun.shadow.mapSize.set(small ? 1024 : 2048, small ? 1024 : 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 1, far: 50 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; scene.add(sun);
 
@@ -469,10 +470,12 @@ function init() {
     camera.position.set(Math.sin(az) * Math.cos(el) * dist, Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
     camera.lookAt(look);
   }
+  let ready = false;
   function resize() {
     const r = wrap.getBoundingClientRect(); if (!r.width) return;
+    renderer.setPixelRatio(Math.min(dprCap, (small ? 900 : 1400) / r.width));
     renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
-    render(performance.now(), 0);
+    if (ready) render(performance.now(), 0);
   }
   new ResizeObserver(resize).observe(wrap);
 
@@ -537,15 +540,15 @@ function init() {
     renderer.render(scene, camera);
   }
 
-  /* Weak device? After ~2 s of slow frames, drop resolution, then shadows. */
-  let slow = 0, frames = 0, level = 0;
+  /* Struggling device? After ~1 s under ~45 fps, drop resolution, then shadows. */
+  let slow = 0, frames = 0, level = 0, readyAt = Infinity;
   function adapt(dt) {
-    if (level > 1 || !dt) return;
-    frames++; if (dt > 30) slow++;
-    if (frames < 90) return;
-    if (slow > 45) {
+    if (level > 1 || !dt || performance.now() - readyAt < 2500) return;   // ignore the busy intro seconds
+    frames++; if (dt > 22) slow++;
+    if (frames < 60) return;
+    if (slow > 30) {
       level++;
-      if (level === 1) renderer.setPixelRatio(1);
+      if (level === 1) dprCap = Math.min(dprCap, 1);
       else { renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); }); }
       resize();
     }
@@ -555,7 +558,9 @@ function init() {
   /* Run only while visible and allowed; otherwise keep one still frame */
   let visible = true, last = performance.now(), raf = 0;
   function frame(now) {
-    raf = 0; if (!visible || document.hidden) return;
+    raf = 0; if (!visible || document.hidden || !ready) return;
+    // 60 fps is plenty: 120/144 Hz desktop screens would otherwise double or triple the GPU work.
+    if (now - last < 15.5 && !still()) { raf = requestAnimationFrame(frame); return; }
     const dt = Math.min(50, now - last); last = now;
     render(now, still() ? 0 : dt); adapt(dt);
     if (!still()) raf = requestAnimationFrame(frame);
@@ -565,7 +570,11 @@ function init() {
   document.addEventListener('visibilitychange', wake);
   new MutationObserver(wake).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   reduced.addEventListener('change', wake);
-  requestAnimationFrame(() => { resize(); wrap.classList.add('on'); wake(); });
+  // Compile shaders off the main thread where supported (slow on Windows/ANGLE), then fade the city in.
+  ring(D.x, D.z, HEX.mint); rings[rings.length - 1].life = 0.999;
+  resize();
+  const compiled = renderer.compileAsync ? renderer.compileAsync(scene, camera).catch(() => {}) : Promise.resolve();
+  compiled.then(() => requestAnimationFrame(() => { ready = true; readyAt = performance.now(); resize(); wrap.classList.add('on'); wake(); }));
 }
 
 // Without the 3D scene, bring back the 2D engine that index.html hid while waiting for it.

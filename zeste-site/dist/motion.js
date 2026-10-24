@@ -4,7 +4,6 @@
 (()=>{
   const doc=document.documentElement, body=document.body;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
-  const finePointer=matchMedia('(hover:hover) and (pointer:fine)');
   const allowed=()=>!reduced.matches&&!body.classList.contains('motion-paused');
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
@@ -287,25 +286,9 @@
   const tracks=[{el:$('.ticker-track',ticker),dir:1,x:0},{el:$('.ticker-track',cross),dir:-1,x:0}];
   let tickerVisible=true,lastY=scrollY,velocity=0,lastT=performance.now();
   if(hasIO)new IntersectionObserver(e=>{tickerVisible=e[0].isIntersecting;}).observe(band);
+  addEventListener('resize',()=>tracks.forEach(t=>{t.half=0;}));
 
-  /* ---------- Cursor + magnetic + spotlight ---------- */
-  const cursor=document.createElement('div');cursor.className='cursor';cursor.setAttribute('aria-hidden','true');cursor.innerHTML='<i></i><span></span>';
-  body.append(cursor);
-  const ptr={x:innerWidth/2,y:innerHeight/2,rx:innerWidth/2,ry:innerHeight/2,moved:false};
-  addEventListener('pointermove',e=>{
-    if(e.pointerType!=='mouse')return;ptr.x=e.clientX;ptr.y=e.clientY;
-    if(!ptr.moved){ptr.moved=true;ptr.rx=ptr.x;ptr.ry=ptr.y;cursor.classList.add('on');}
-  },{passive:true});
-  document.addEventListener('pointerleave',()=>cursor.classList.remove('on'));
-  document.addEventListener('pointerenter',()=>{if(ptr.moved)cursor.classList.add('on');});
-  const hoverSel='a,button,summary,select,input,textarea,label,[role=tab]';
-  document.addEventListener('pointerover',e=>{
-    const t=e.target.closest(hoverSel);cursor.classList.toggle('hover',!!t);
-    cursor.classList.toggle('text',!!e.target.closest('input,textarea'));
-  });
-  document.addEventListener('pointerdown',()=>cursor.classList.add('down'));
-  document.addEventListener('pointerup',()=>cursor.classList.remove('down'));
-
+  /* ---------- Magnetic controls + spotlight ---------- */
   $$('.button,.motion-control,header nav a').forEach(el=>{
     el.classList.add('magnetic');
     const pull=el.matches('.button')?.32:.22;
@@ -354,16 +337,11 @@
     if(tickerVisible){
       const boost=Math.min(6,Math.abs(velocity)*1.6),dir=velocity<-.05?-1:1;
       tracks.forEach(t=>{
-        const half=t.el.scrollWidth/2||1;
+        const half=t.half||(t.half=t.el.scrollWidth/2)||1;
         t.x-=(.045+boost*.18)*dt*t.dir*dir;
         if(t.x<=-half)t.x+=half;if(t.x>0)t.x-=half;
         t.el.style.transform='translate3d('+t.x.toFixed(1)+'px,0,0) skewX('+clamp(-velocity*4,-14,14).toFixed(2)+'deg)';
       });
-    }
-    if(ptr.moved&&finePointer.matches){
-      ptr.rx+=(ptr.x-ptr.rx)*.18;ptr.ry+=(ptr.y-ptr.ry)*.18;
-      cursor.style.setProperty('--x',ptr.x+'px');cursor.style.setProperty('--y',ptr.y+'px');
-      cursor.style.setProperty('--rx',ptr.rx.toFixed(1)+'px');cursor.style.setProperty('--ry',ptr.ry.toFixed(1)+'px');
     }
   }
   requestAnimationFrame(frame);
