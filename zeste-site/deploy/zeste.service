@@ -1,0 +1,26 @@
+[Unit]
+Description=Zeste - site et formulaire de contact
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=zeste
+Group=zeste
+Environment=BIND=127.0.0.1 PORT=8099 TRUST_PROXY=1 PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/zeste/zeste.env
+ExecStart=/usr/bin/python3 -I /opt/zeste/deploy/server.py
+Restart=on-failure
+RestartSec=3
+# Hardening: the server only reads its files and talks to the SMTP host.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
